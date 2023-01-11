@@ -1,11 +1,13 @@
 #include "so.h"
 #include "tela.h"
+#include "proc.h"
 #include <stdlib.h>
 
 struct so_t {
   contr_t *contr;       // o controlador do hardware
   bool paniquei;        // apareceu alguma situação intratável
   cpu_estado_t *cpue;   // cópia do estado da CPU
+  proc_list_t* procs;   // lista contendo os processos do SO
 };
 
 // funções auxiliares
@@ -19,13 +21,17 @@ so_t *so_cria(contr_t *contr)
   self->contr = contr;
   self->paniquei = false;
   self->cpue = cpue_cria();
+  self->procs = proc_list_cria();
+
   init_mem(self);
+
   // coloca a CPU em modo usuário
   /*
   exec_copia_estado(contr_exec(self->contr), self->cpue);
   cpue_muda_modo(self->cpue, usuario);
   exec_altera_estado(contr_exec(self->contr), self->cpue);
   */
+
   return self;
 }
 
