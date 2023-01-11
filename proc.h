@@ -19,9 +19,11 @@ typedef enum {
 
 typedef struct proc_t {
     int id;
+    int prog;
     cpu_estado_t* cpue;
     mem_t* mem; // Memória Principal
     proc_estado_t estado;
+    int disp; // Número do dispositivo (caso bloqueado por e/s)
 
     SLIST_ENTRY(proc_t) entries;
 } proc_t;

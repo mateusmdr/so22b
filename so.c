@@ -8,11 +8,14 @@ struct so_t {
   bool paniquei;        // apareceu alguma situação intratável
   cpu_estado_t *cpue;   // cópia do estado da CPU
   proc_list_t* procs;   // lista contendo os processos do SO
+  int max_proc_id;      // último id de processo gerado
+  proc_t* proc;         // processo atual em execução (NULL caso nenhum)
 };
 
 // funções auxiliares
 static void init_mem(so_t *self);
 static void panico(so_t *self);
+static void troca_processo(so_t *self, proc_t *proc);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -22,6 +25,7 @@ so_t *so_cria(contr_t *contr)
   self->paniquei = false;
   self->cpue = cpue_cria();
   self->procs = proc_list_cria();
+  self->max_proc_id = 0;
 
   init_mem(self);
 
@@ -89,17 +93,21 @@ static void so_trata_sisop_escr(so_t *self)
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
-  t_printf("SISOP FIM não implementado");
-  panico(self);
-  //...
+  
 }
 
 // chamada de sistema para criação de processo
 static void so_trata_sisop_cria(so_t *self)
 {
-  t_printf("SISOP CRIA não implementado");
-  panico(self);
-  //...
+  self->max_proc_id++;
+
+  proc_t* proc;
+  // proc_cria(
+  //   self->n_procs,
+  // );
+  // cpue_A(self->cpue);
+
+  proc_list_insere(self->procs, proc);
 }
 
 // trata uma interrupção de chamada de sistema
@@ -155,6 +163,7 @@ bool so_ok(so_t *self)
   return !self->paniquei;
 }
 
+/***/
 
 // carrega um programa na memória
 static void init_mem(so_t *self)
@@ -179,4 +188,18 @@ static void panico(so_t *self)
 {
   t_printf("Problema irrecuperável no SO");
   self->paniquei = true;
+}
+
+static void troca_processo(so_t *self, proc_t *novo) {
+    // recupera o estado do processo
+    cpue_copia(novo->cpue, self->cpue);
+    // carrega a memória do processo
+    mem_copia(novo->mem, contr_mem(self->contr));
+
+    // atualiza o estado dos processos
+    self->proc->estado = BLOQUEADO;
+    novo->estado = EXECUTANDO;
+
+    // altera o processo atual em execução
+    self->proc = novo;
 }

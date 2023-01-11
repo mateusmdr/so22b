@@ -37,6 +37,14 @@ int mem_tam(mem_t *self)
   return self->tam;
 }
 
+void mem_copia(mem_t* self, mem_t* outro) {
+  int valor;
+  for(int c=0; c < mem_tam(self); c++) {
+    mem_le(self, c, &valor);
+    mem_escreve(outro, c, valor);
+  }
+}
+
 // função auxiliar, verifica se endereço é válido
 static err_t verif_permissao(mem_t *self, int endereco)
 {
