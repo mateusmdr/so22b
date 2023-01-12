@@ -13,9 +13,8 @@ struct so_t {
 };
 
 // funções auxiliares
-static void init_mem(so_t *self);
+static void init_mem(so_t *self, int n_progr);
 static void panico(so_t *self);
-static void troca_processo(so_t *self, proc_t *proc);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -27,7 +26,11 @@ so_t *so_cria(contr_t *contr)
   self->procs = proc_list_cria();
   self->max_proc_id = 0;
 
-  init_mem(self);
+  self->proc = so_cria_processo(self);
+  if(!proc_inicializa(self->proc, 0)) {
+    panico(self);
+  }
+  
 
   // coloca a CPU em modo usuário
   /*
@@ -42,6 +45,7 @@ so_t *so_cria(contr_t *contr)
 void so_destroi(so_t *self)
 {
   cpue_destroi(self->cpue);
+  proc_list_destroi(self->procs);
   free(self);
 }
 
@@ -93,19 +97,19 @@ static void so_trata_sisop_escr(so_t *self)
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
-  
+  so_finaliza_processo(self);
 }
 
 // chamada de sistema para criação de processo
 static void so_trata_sisop_cria(so_t *self)
 {
   self->max_proc_id++;
+  int prog_id = cpue_A(self->cpue);
 
-  proc_t* proc;
-  // proc_cria(
-  //   self->n_procs,
-  // );
-  // cpue_A(self->cpue);
+  proc_t* proc = so_cria_processo(self);
+  if(!proc_inicializa(proc, prog_id)) {
+    panico(self);
+  }
 
   proc_list_insere(self->procs, proc);
 }
@@ -139,6 +143,9 @@ static void so_trata_sisop(so_t *self)
 static void so_trata_tic(so_t *self)
 {
   // TODO: tratar a interrupção do relógio
+  if(self->proc == NULL) {
+    // procura processo bloqueado e verifica se está disponível
+  }
 }
 
 // houve uma interrupção do tipo err — trate-a
@@ -163,25 +170,20 @@ bool so_ok(so_t *self)
   return !self->paniquei;
 }
 
-/***/
-
-// carrega um programa na memória
-static void init_mem(so_t *self)
+static proc_t* so_cria_processo(so_t *self)
 {
-  // programa para executar na nossa CPU
-  int progr[] = {
-  #include "p1.maq"
-  };
-  int tam_progr = sizeof(progr)/sizeof(progr[0]);
+  proc_t* proc = proc_cria(self->max_proc_id, mem_tam(contr_mem(self->contr)), EXECUTANDO);
+  proc_list_insere(self->procs, proc);
+  self->max_proc_id++;
 
-  // inicializa a memória com o programa 
-  mem_t *mem = contr_mem(self->contr);
-  for (int i = 0; i < tam_progr; i++) {
-    if (mem_escreve(mem, i, progr[i]) != ERR_OK) {
-      t_printf("so.init_mem: erro de memória, endereco %d\n", i);
-      panico(self);
-    }
-  }
+  return proc;
+}
+
+static void so_finaliza_processo(so_t *self)
+{
+  proc_list_remove(self->procs, self->proc);
+  proc_destroi(self->proc);
+  self->proc = NULL;
 }
   
 static void panico(so_t *self) 
@@ -190,16 +192,16 @@ static void panico(so_t *self)
   self->paniquei = true;
 }
 
-static void troca_processo(so_t *self, proc_t *novo) {
-    // recupera o estado do processo
-    cpue_copia(novo->cpue, self->cpue);
-    // carrega a memória do processo
-    mem_copia(novo->mem, contr_mem(self->contr));
+static void so_troca_processo(so_t *self, proc_t *novo) {
+  // recupera o estado do processo
+  cpue_copia(novo->cpue, contr_cpue(self->cpue));
+  // carrega a memória do processo
+  mem_copia(novo->mem, contr_mem(self->contr));
 
-    // atualiza o estado dos processos
-    self->proc->estado = BLOQUEADO;
-    novo->estado = EXECUTANDO;
+  // atualiza o estado dos processos
+  self->proc->estado = BLOQUEADO;
+  novo->estado = EXECUTANDO;
 
-    // altera o processo atual em execução
-    self->proc = novo;
+  // altera o processo atual em execução
+  self->proc = novo;
 }

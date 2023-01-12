@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <sys/queue.h>
+#include <stdbool.h>
 #include "cpu_estado.h"
 #include "mem.h"
 
@@ -31,13 +32,19 @@ typedef struct proc_t {
 typedef SLIST_HEAD(proc_list_t, proc_t) proc_list_t;
 
 // aloca um processo
-proc_t* proc_cria(int id, cpu_estado_t* cpue, mem_t* mem, proc_estado_t estado);
+proc_t* proc_cria(int id, int mem_tam, proc_estado_t estado);
 
 // desaloca um processo
 void proc_destroi(proc_t* proc);
 
+// inicializa a memória de um processo com um programa (falso caso falhe)
+bool proc_inicializa(proc_t* proc, int prog_id);
+
 // inicializa uma lista de processos
 proc_list_t* proc_list_cria();
+
+// destroi uma lista de processos
+void proc_list_destroi();
 
 // insere um processo na lista
 void proc_list_insere(proc_list_t* self, proc_t* el);
