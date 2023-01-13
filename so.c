@@ -2,19 +2,23 @@
 #include "tela.h"
 #include "proc.h"
 #include <stdlib.h>
+#include <sys/queue.h>
 
 struct so_t {
   contr_t *contr;       // o controlador do hardware
   bool paniquei;        // apareceu alguma situação intratável
   cpu_estado_t *cpue;   // cópia do estado da CPU
-  proc_list_t* procs;   // lista contendo os processos do SO
+  proc_list_t* proc_list;   // lista contendo os processos do SO
   int max_proc_id;      // último id de processo gerado
   proc_t* proc;         // processo atual em execução (NULL caso nenhum)
 };
 
 // funções auxiliares
-static void init_mem(so_t *self, int n_progr);
 static void panico(so_t *self);
+static proc_t* so_cria_processo(so_t *self);
+static void so_finaliza_processo(so_t *self);
+static proc_t* so_encontra_processo(so_t *self);
+static void so_troca_processo(so_t *self);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -23,7 +27,7 @@ so_t *so_cria(contr_t *contr)
   self->contr = contr;
   self->paniquei = false;
   self->cpue = cpue_cria();
-  self->procs = proc_list_cria();
+  self->proc_list = proc_list_cria();
   self->max_proc_id = 0;
 
   self->proc = so_cria_processo(self);
@@ -45,7 +49,7 @@ so_t *so_cria(contr_t *contr)
 void so_destroi(so_t *self)
 {
   cpue_destroi(self->cpue);
-  proc_list_destroi(self->procs);
+  proc_list_destroi(self->proc_list);
   free(self);
 }
 
@@ -57,21 +61,25 @@ void so_destroi(so_t *self)
 //            A o código de erro
 static void so_trata_sisop_le(so_t *self)
 {
-  // faz leitura assíncrona.
-  // deveria ser síncrono, verificar es_pronto() e bloquear o processo
   int disp = cpue_A(self->cpue);
-  int val;
-  err_t err = es_le(contr_es(self->contr), disp, &val);
-  cpue_muda_A(self->cpue, err);
-  if (err == ERR_OK) {
-    cpue_muda_X(self->cpue, val);
+  if(es_pronto(contr_es(self->contr), disp, leitura)) {
+    int val;
+    err_t err = es_le(contr_es(self->contr), disp, &val);
+    cpue_muda_A(self->cpue, err);
+    if (err == ERR_OK) {
+      cpue_muda_X(self->cpue, val);
+    }
+    // incrementa o PC
+    cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
+  }else {
+    self->proc->estado = BLOQUEADO;
+    self->proc->disp = disp;
+    self->proc->acesso = leitura;
+    so_troca_processo(self);
   }
-  // incrementa o PC
-  cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
+
   // interrupção da cpu foi atendida
   cpue_muda_erro(self->cpue, ERR_OK, 0);
-  // altera o estado da CPU (deveria alterar o estado do processo)
-  exec_altera_estado(contr_exec(self->contr), self->cpue);
 }
 
 // chamada de sistema para escrita de E/S
@@ -80,24 +88,29 @@ static void so_trata_sisop_le(so_t *self)
 // retorna em A o código de erro
 static void so_trata_sisop_escr(so_t *self)
 {
-  // faz escrita assíncrona.
-  // deveria ser síncrono, verificar es_pronto() e bloquear o processo
   int disp = cpue_A(self->cpue);
   int val = cpue_X(self->cpue);
-  err_t err = es_escreve(contr_es(self->contr), disp, val);
-  cpue_muda_A(self->cpue, err);
+
+  if(es_pronto(contr_es(self->contr), disp, escrita)) {
+    err_t err = es_escreve(contr_es(self->contr), disp, val);
+    cpue_muda_A(self->cpue, err);
+    // incrementa o PC
+    cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
+  }else {
+    self->proc->estado = BLOQUEADO;
+    self->proc->disp = disp;
+    self->proc->acesso = escrita;
+    so_troca_processo(self);
+  }
   // interrupção da cpu foi atendida
   cpue_muda_erro(self->cpue, ERR_OK, 0);
-  // incrementa o PC
-  cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
-  // altera o estado da CPU (deveria alterar o estado do processo)
-  exec_altera_estado(contr_exec(self->contr), self->cpue);
 }
 
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
   so_finaliza_processo(self);
+  so_troca_processo(self);
 }
 
 // chamada de sistema para criação de processo
@@ -111,7 +124,7 @@ static void so_trata_sisop_cria(so_t *self)
     panico(self);
   }
 
-  proc_list_insere(self->procs, proc);
+  proc_list_insere(self->proc_list, proc);
 }
 
 // trata uma interrupção de chamada de sistema
@@ -138,13 +151,16 @@ static void so_trata_sisop(so_t *self)
       panico(self);
   }
 }
-
 // trata uma interrupção de tempo do relógio
 static void so_trata_tic(so_t *self)
 {
-  // TODO: tratar a interrupção do relógio
-  if(self->proc == NULL) {
-    // procura processo bloqueado e verifica se está disponível
+  proc_t* el;
+  SLIST_FOREACH(el, self->proc_list, entries){
+    if(el->estado == BLOQUEADO) {
+      if(es_pronto(contr_es(self->contr), el->disp, el->acesso)) {
+        el->estado = PRONTO;
+      }
+    }
   }
 }
 
@@ -172,8 +188,8 @@ bool so_ok(so_t *self)
 
 static proc_t* so_cria_processo(so_t *self)
 {
-  proc_t* proc = proc_cria(self->max_proc_id, mem_tam(contr_mem(self->contr)), EXECUTANDO);
-  proc_list_insere(self->procs, proc);
+  proc_t* proc = proc_cria(self->max_proc_id, mem_tam(contr_mem(self->contr)));
+  proc_list_insere(self->proc_list, proc);
   self->max_proc_id++;
 
   return proc;
@@ -181,7 +197,7 @@ static proc_t* so_cria_processo(so_t *self)
 
 static void so_finaliza_processo(so_t *self)
 {
-  proc_list_remove(self->procs, self->proc);
+  proc_list_remove(self->proc_list, self->proc);
   proc_destroi(self->proc);
   self->proc = NULL;
 }
@@ -192,16 +208,35 @@ static void panico(so_t *self)
   self->paniquei = true;
 }
 
-static void so_troca_processo(so_t *self, proc_t *novo) {
+static void so_muda_modo(so_t* self, cpu_modo_t modo) {
+  exec_copia_estado(contr_exec(self->contr), self->cpue);
+  cpue_muda_modo(self->cpue, modo);
+  exec_altera_estado(contr_exec(self->contr), self->cpue);
+}
+
+static void so_troca_processo(so_t *self) {
+  proc_t* proc = so_encontra_processo(self);
+  // TODO salva o processo atual (caso exista)
+  if(proc == NULL) {
+    so_muda_modo(self, zumbi);
+    return;
+  }
+
   // recupera o estado do processo
-  cpue_copia(novo->cpue, contr_cpue(self->cpue));
+  // cpue_copia(proc->cpue, contr_cpue(self->cpue));
   // carrega a memória do processo
-  mem_copia(novo->mem, contr_mem(self->contr));
+  // mem_copia(proc->mem, contr_mem(self->contr));
 
   // atualiza o estado dos processos
   self->proc->estado = BLOQUEADO;
-  novo->estado = EXECUTANDO;
+  proc->estado = EXECUTANDO;
 
   // altera o processo atual em execução
-  self->proc = novo;
+  self->proc = proc;
+}
+
+// Encontra e retorna um processo pronto para ser executado
+// NULL caso não haja nenhum
+static proc_t* so_encontra_processo(so_t *self) {
+  return proc_list_encontra_estado(self->proc_list, PRONTO);
 }

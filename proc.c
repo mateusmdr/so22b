@@ -17,8 +17,12 @@ int *progrs[] = {
   progr1,
   progr2
 };
+int progrs_size[] = {
+    sizeof(progr1),
+    sizeof(progr2)
+};
 
-proc_t* proc_cria(int id, int mem_tam, proc_estado_t estado) {
+proc_t* proc_cria(int id, int mem_tam) {
     proc_t* proc = (proc_t*) malloc(sizeof(proc_t));
 
     if (proc != NULL){
@@ -28,7 +32,7 @@ proc_t* proc_cria(int id, int mem_tam, proc_estado_t estado) {
             return NULL;
         }
         proc->cpue = cpue_cria();
-        proc->estado = estado;
+        proc->estado = PRONTO;
         proc->id = id;
     }
 
@@ -46,12 +50,11 @@ bool proc_inicializa(proc_t* proc, int prog_id) {
         return false;
     }
 
-    int progr[] = *progrs[prog_id];
-    int tam_progr = sizeof(progr)/sizeof(progr[0]);
+    int* progr = progrs[prog_id];
+    int tam_progr = progrs_size[prog_id]/sizeof(progr[0]);
 
     for (int i = 0; i < tam_progr; i++) {
         if (mem_escreve(proc->mem, i, progr[i]) != ERR_OK) {
-            t_printf("proc.inicializa: erro de memória, endereco %d\n", i);
             return false;
         }
     }
@@ -60,7 +63,7 @@ bool proc_inicializa(proc_t* proc, int prog_id) {
 }
 
 proc_list_t* proc_list_cria() {
-    proc_list_t* self;
+    proc_list_t* self = malloc(sizeof(proc_list_t));
     SLIST_INIT(self);
 
     return self;
@@ -82,7 +85,7 @@ void proc_list_remove(proc_list_t* self, proc_t* el) {
     SLIST_REMOVE(self, el, proc_t, entries);
 }
 
-proc_t* proc_list_encontra(proc_list_t* self, int id) {
+proc_t* proc_list_encontra_id(proc_list_t* self, int id) {
     proc_t *it, *el = NULL;
     SLIST_FOREACH(it, self, entries){
         if(it->id == id) {
@@ -92,4 +95,23 @@ proc_t* proc_list_encontra(proc_list_t* self, int id) {
     }
     
     return el;
+}
+
+proc_t* proc_list_encontra_estado(proc_list_t* self, proc_estado_t estado) {
+    proc_t *it, *el = NULL;
+    SLIST_FOREACH(it, self, entries){
+        if(it->estado == estado) {
+            el = it;
+            break;
+        }
+    }
+    
+    return el;
+}
+
+void proc_list_percorre(proc_list_t* self, void(*fn)(proc_t* proc, ...)) {
+    proc_t* el;
+    SLIST_FOREACH(el, self, entries){
+        fn(el);
+    }
 }
