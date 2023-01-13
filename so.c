@@ -151,7 +151,9 @@ static void so_trata_sisop(so_t *self)
       panico(self);
   }
 }
+
 // trata uma interrupção de tempo do relógio
+// verifica se os processos marcados como bloqueados por e/s podem ser liberados
 static void so_trata_tic(so_t *self)
 {
   proc_t* el;
@@ -161,6 +163,11 @@ static void so_trata_tic(so_t *self)
         el->estado = PRONTO;
       }
     }
+  }
+
+  // busca um processo caso nenhum esteja executando
+  if(self->proc == NULL) {
+    so_troca_processo(self);
   }
 }
 
@@ -215,24 +222,27 @@ static void so_muda_modo(so_t* self, cpu_modo_t modo) {
 }
 
 static void so_troca_processo(so_t *self) {
-  proc_t* proc = so_encontra_processo(self);
-  // TODO salva o processo atual (caso exista)
-  if(proc == NULL) {
+  // salva processo atual (caso exista)
+  if(self->proc != NULL) {
+    exec_copia_estado(contr_exec(self->contr), self->proc->cpue);
+    mem_copia(contr_mem(self->contr), self->proc->mem);
+    self->proc->estado = BLOQUEADO;
+  }
+
+  // Altera o processo atual
+  self->proc = so_encontra_processo(self);
+  if(self->proc == NULL) {
     so_muda_modo(self, zumbi);
     return;
   }
 
-  // recupera o estado do processo
-  // cpue_copia(proc->cpue, contr_cpue(self->cpue));
+  // altera o estado da CPU para o armazenado no processo
+  exec_altera_estado(contr_exec(self->contr), self->proc->cpue);
   // carrega a memória do processo
-  // mem_copia(proc->mem, contr_mem(self->contr));
+  mem_copia(self->proc->mem, contr_mem(self->contr));
 
-  // atualiza o estado dos processos
-  self->proc->estado = BLOQUEADO;
-  proc->estado = EXECUTANDO;
-
-  // altera o processo atual em execução
-  self->proc = proc;
+  // atualiza o estado do processo atual
+  self->proc->estado = EXECUTANDO;
 }
 
 // Encontra e retorna um processo pronto para ser executado
