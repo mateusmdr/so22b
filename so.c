@@ -9,16 +9,18 @@ struct so_t {
   bool paniquei;        // apareceu alguma situação intratável
   cpu_estado_t *cpue;   // cópia do estado da CPU
   proc_list_t* proc_list;   // lista contendo os processos do SO
-  int max_proc_id;      // último id de processo gerado
+  int max_pid;      // último id de processo gerado
   proc_t* proc;         // processo atual em execução (NULL caso nenhum)
 };
 
 // funções auxiliares
 static void panico(so_t *self);
-static proc_t* so_cria_processo(so_t *self);
-static void so_finaliza_processo(so_t *self);
+static proc_t* so_cria_processo(so_t *self, int prog);
+static void so_finaliza_processo(so_t *self, proc_t* proc);
 static proc_t* so_encontra_processo(so_t *self);
 static void so_troca_processo(so_t *self);
+static void so_carrega_processo(so_t *self, proc_t* proc);
+static void so_salva_processo(so_t *self, proc_t* proc);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -28,13 +30,10 @@ so_t *so_cria(contr_t *contr)
   self->paniquei = false;
   self->cpue = cpue_cria();
   self->proc_list = proc_list_cria();
-  self->max_proc_id = 0;
+  self->max_pid = 0;
 
-  self->proc = so_cria_processo(self);
-  if(!proc_inicializa(self->proc, 0)) {
-    panico(self);
-  }
-  
+  proc_t* proc = so_cria_processo(self, 0);
+  so_carrega_processo(self, proc);
 
   // coloca a CPU em modo usuário
   /*
@@ -109,22 +108,15 @@ static void so_trata_sisop_escr(so_t *self)
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
-  so_finaliza_processo(self);
+  so_finaliza_processo(self, self->proc);
   so_troca_processo(self);
 }
 
 // chamada de sistema para criação de processo
 static void so_trata_sisop_cria(so_t *self)
 {
-  self->max_proc_id++;
-  int prog_id = cpue_A(self->cpue);
-
-  proc_t* proc = so_cria_processo(self);
-  if(!proc_inicializa(proc, prog_id)) {
-    panico(self);
-  }
-
-  proc_list_insere(self->proc_list, proc);
+  int prog = cpue_A(self->cpue);
+  so_cria_processo(self, prog);
 }
 
 // trata uma interrupção de chamada de sistema
@@ -156,6 +148,8 @@ static void so_trata_sisop(so_t *self)
 // verifica se os processos marcados como bloqueados por e/s podem ser liberados
 static void so_trata_tic(so_t *self)
 {
+  t_printf("Int de relógio");
+
   proc_t* el;
   SLIST_FOREACH(el, self->proc_list, entries){
     if(el->estado == BLOQUEADO) {
@@ -193,20 +187,33 @@ bool so_ok(so_t *self)
   return !self->paniquei;
 }
 
-static proc_t* so_cria_processo(so_t *self)
+static proc_t* so_cria_processo(so_t *self, int prog)
 {
-  proc_t* proc = proc_cria(self->max_proc_id, mem_tam(contr_mem(self->contr)));
+  proc_t* proc = proc_cria(self->max_pid, mem_tam(contr_mem(self->contr)));
   proc_list_insere(self->proc_list, proc);
-  self->max_proc_id++;
+
+  int pid = self->max_pid;
+  self->max_pid++;
+
+  t_printf("Processo %d criado", pid);
+
+  if(!proc_inicializa(proc, prog)) {
+    so_finaliza_processo(self, proc);
+    t_printf("Falha na inicialização do processo %d inicializado", pid);
+  }else {
+    t_printf("Processo %d inicializado", pid);
+  }
 
   return proc;
 }
 
-static void so_finaliza_processo(so_t *self)
+static void so_finaliza_processo(so_t *self, proc_t* proc)
 {
-  proc_list_remove(self->proc_list, self->proc);
-  proc_destroi(self->proc);
-  self->proc = NULL;
+  if(self->proc == proc) {
+    self->proc = NULL;
+  }
+  proc_list_remove(self->proc_list, proc);
+  proc_destroi(proc);
 }
   
 static void panico(so_t *self) 
@@ -221,28 +228,38 @@ static void so_muda_modo(so_t* self, cpu_modo_t modo) {
   exec_altera_estado(contr_exec(self->contr), self->cpue);
 }
 
-static void so_troca_processo(so_t *self) {
-  // salva processo atual (caso exista)
-  if(self->proc != NULL) {
-    exec_copia_estado(contr_exec(self->contr), self->proc->cpue);
-    mem_copia(contr_mem(self->contr), self->proc->mem);
-    self->proc->estado = BLOQUEADO;
-  }
-
-  // Altera o processo atual
-  self->proc = so_encontra_processo(self);
-  if(self->proc == NULL) {
-    so_muda_modo(self, zumbi);
-    return;
-  }
-
+// Carrega um processo e o coloca em execução
+static void so_carrega_processo(so_t *self, proc_t* proc){
+  // atualiza o estado do processo
+  proc->estado = EXECUTANDO;
+  // regista como processo em execução no SO
+  self->proc = proc;  
   // altera o estado da CPU para o armazenado no processo
   exec_altera_estado(contr_exec(self->contr), self->proc->cpue);
   // carrega a memória do processo
   mem_copia(self->proc->mem, contr_mem(self->contr));
+}
 
-  // atualiza o estado do processo atual
-  self->proc->estado = EXECUTANDO;
+// Salva o estado de um processo
+static void so_salva_processo(so_t *self, proc_t* proc){
+  exec_copia_estado(contr_exec(self->contr), self->proc->cpue);
+  mem_copia(contr_mem(self->contr), self->proc->mem);
+}
+
+static void so_troca_processo(so_t *self) {
+  // salva processo atual (caso exista)
+  if(self->proc != NULL) {
+    so_salva_processo(self, self->proc);
+  }
+
+  // Altera o processo atual
+  proc_t* proc = so_encontra_processo(self);
+  if(proc == NULL) {
+    so_muda_modo(self, zumbi);
+    return;
+  }
+
+  so_carrega_processo(self, proc);
 }
 
 // Encontra e retorna um processo pronto para ser executado
