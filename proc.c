@@ -5,6 +5,10 @@
 #include "cpu_estado.h"
 
 // programas disponíveis
+int progr0[] = {
+  #include "init.maq"
+};
+
 int progr1[] = {
   #include "p1.maq"
 };
@@ -14,10 +18,12 @@ int progr2[] = {
 };
 
 int *progrs[] = {
-  progr1,
-  progr2
+    progr0,
+    progr1,
+    progr2
 };
 int progrs_size[] = {
+    sizeof(progr0),
     sizeof(progr1),
     sizeof(progr2)
 };
