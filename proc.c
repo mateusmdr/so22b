@@ -90,34 +90,3 @@ void proc_list_insere(proc_list_t* self, proc_t* el) {
 void proc_list_remove(proc_list_t* self, proc_t* el) {
     SLIST_REMOVE(self, el, proc_t, entries);
 }
-
-proc_t* proc_list_encontra_id(proc_list_t* self, int id) {
-    proc_t *it, *el = NULL;
-    SLIST_FOREACH(it, self, entries){
-        if(it->id == id) {
-            el = it;
-            break;
-        }
-    }
-    
-    return el;
-}
-
-proc_t* proc_list_encontra_estado(proc_list_t* self, proc_estado_t estado) {
-    proc_t *it, *el = NULL;
-    SLIST_FOREACH(it, self, entries){
-        if(it->estado == estado) {
-            el = it;
-            break;
-        }
-    }
-    
-    return el;
-}
-
-void proc_list_percorre(proc_list_t* self, void(*fn)(proc_t* proc, ...)) {
-    proc_t* el;
-    SLIST_FOREACH(el, self, entries){
-        fn(el);
-    }
-}

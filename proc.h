@@ -54,13 +54,4 @@ void proc_list_insere(proc_list_t* self, proc_t* el);
 // remove um processo da lista
 void proc_list_remove(proc_list_t* self, proc_t* el);
 
-// retorna um processo da lista com o id fornecido, NULL caso não exista
-proc_t* proc_list_encontra_id(proc_list_t* self, int id);
-
-// retorna um processo da lista com o estado fornecido, NULL caso não exista
-proc_t* proc_list_encontra_estado(proc_list_t* self, proc_estado_t estado);
-
-// executa fn para cada processo da lista
-void proc_list_percorre(proc_list_t* self, void(*fn)(proc_t* proc, ...));
-
 #endif
