@@ -16,7 +16,7 @@ montador: ${OBJS_MONT}
 teste: ${OBJS}
 
 # para gerar so.o, precisa, além do so.c, dos arquivos .maq
-so.o: so.c ${MAQS}
+proc.o: proc.c ${MAQS}
 
 # para transformar um .asm em .maq, precisamos do montador
 %.maq: %.asm montador
