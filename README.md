@@ -1,70 +1,97 @@
-## t1
+# so22b
+Página da disciplina de Sistemas Operacionais, segundo semestre de 2022
 
-### Alterações na implementação em relação ao t0c
+ELC1080, DLSC/CT/UFSM
+turmas CC e SI
 
-- criação de `so`, com o embrião do sistema operacional; na inicialização carrega um programa para a memória
-- criação de `contr`, controlador do hardware; centraliza os componentes de hardware
-    e implementa o laço principal da simulação.
-   O laço principal:
-    - executa uma instrução;
-    - avança o relógio;
-    - atualiza a console.
-   Se algum dos passos do laço sinalizar uma interrupção, o controlador chama o SO para tratá-la. O laço é interrompido quando o SO disser que assim deve ser (através da função so_ok()).
-- a CPU tem agora 3 modos de execução
-  - supervisor - executa qualquer instrução
-  - usuário - não executa instruções privilegiadas (LE, ESCR, PARA),
-    causa erro ERR_INSTR_PRIV, que é passado pelo controlador ao SO como
-    interrupção
-  - zumbi - não executa nada, mas não interrompe também; servirá para quando o SO não tiver processo apto a executar
-- implementação de chamadas de sistema SO_LE e SO_ESCR para acesso a dispositivos de E/S. A implementação das chamadas está assíncrona, se o dispositivo não estiver pronto retorna com erro, em vez de bloquear a execução do programa.
+professor: Benhur Stein ([benhur+so22b@inf.ufsm.br](mailto:benhur%2bso22b@inf.ufsm.br))\
+terças e quintas, 10h30, sala 262
 
-   Tem ainda a chamada SO_FIM, que serve para um processo pedir para morrer e a chamada SO_CRIA, que serve para criar um novo processo (em A tem o número de identificação do programa a executar). Essas duas chamadas não estão implementadas no SO, o SO entra em pânico (e encerra a execução) caso seja chamado com uma delas. Na verdade, o SO entra em pânoco para qualquer interrupção que não reconheça.
-- implementação de interrupção periódica do relógio (o período é escolhido na inicialização do relógio). O SO aceita a interrupção, mas não faz nada.
-- tem um novo programa exemplo, ex5, que é uma reimplementação do ex4 com chamadas de sistema.
-- tem ainda mais 3 programas exemplo, para uso com processos, init.asm, que cria 2 processos, para executar os programas 1 e 2, e p1 e p2.asm, para serem os programas 1 e 2 (eles são quase iguais ao ex5, mas o p1 só lê e escreve no terminal a e o p2 no b).
-- mudaram os comandos da console. Agora além de controlar as filas de E/S dá para controlar a execução. Os comandos aceitos agora são:
-  - `etn` entra o número `n` no terminal `t`  ex.: `eb30`
-  - `lt`  lê um número do terminal `t` (retira da saída)  ex.: `lc`
-  - `zt`  esvazia a saída do terminal `t`  ex: `za`
-  - `p`   para a execução
-  - `s`   executa uma instrução
-  - `c`   continua a execução
+## Desenvolvimento da disciplina
 
-   No início a execução está parada. 
+Os canais de comunicação entre o professor e os alunos são 
+os encontros em sala de aula,
+encontros agendados com o professor (por e-mail),
+esta página (<https://github.com/BenhurUFSM/so22b>)
+e e-mail para [benhur+so22b@inf.ufsm.br](mailto:benhur%2bso22b@inf.ufsm.br).
 
+O e-mail pode ser usado para o envio de perguntas, exercícios, reclamações, sugestões, críticas e o que mais for, durante todo o período em que durar a disciplina.
 
-### t1 — Implementação de processos
+Esta página concentrará os assuntos vistos em aula, a descrição de exercícios e trabalhos, avaliações, etc. Ela estará sendo aumentada/atualizada durante todo o semestre. Ela é o canal mais oficial de informações sobre a disciplina.
 
-Você deve complementar a implementação fornecida para que tenha suporte a multiprogramação, como descrito a seguir.
+Vou seguir de forma bastante próxima o assunto como ele é visto no livro
 
-O SO manterá toda a informação referente a cada processo em uma tabela de processos. No mínimo, essa tabela conterá o estado da CPU para esse processo, o estado do processo (em execução, pronto, bloqueado), informação que permita saber porque o processo está bloqueado e como/quando desbloqueá-lo. Para facilitar a implementação, manterá inclusive uma cópia de toda a memória principal. A troca de um processo para outro incluirá o salvamento e recuperação de toda a memória do sistema. Mais tarde, quando falarmos sobre gerenciamento de memória, isso será otimizado.
+```
+   Sistemas Operacionais Modernos
+   Andrew S Tanenbaum
+```
 
-O SO manterá um conjunto de programas que podem ser executados. Um programa é o conteúdo de um arquivo ".maq". Cada programa será designado por um número, e esse número é usado pela chamada de criação de um processo para identificar o programa a executar. Quando um processo for criado, o conteúdo da memória do processo será inicializado a partir do programa.
+## Avaliação
 
-Na inicialização, o SO deve criar um processo para executar um programa inicial. Os demais processos serão criados por chamadas "SO_CRIA" realizadas pelos processos em execução.
+Breve
 
-A única forma de bloqueio de um processo será por E/S. As chamadas SO_LE e SO_ESCR devem ser alteradas para chamar es_pronto e bloquear o processo caso o dispositivo não esteja pronto. Cada vez que o SO executa, deve verificar todos os processos bloqueados, e testar se cada um deve desbloquear (chamando es_pronto).
+## Aulas 
 
-As 4 chamadas de sistema devem ser alteradas (as de E/S para bloquear processos, as demais para criação e término de processo).
+|    N |   data | assunto
+| ---: | :----: | :--------
+|    1 |  13set | introdução (descrição do [simulador](t0), seção 1.1 do livro)
+|    2 |  15set | introdução (seção 1.2–1.2.3 do livro)
+|      |  20set | feriado
+|    3 |  22set | introdução (1.2.3–1.3.1)
+|    4 |  27set | introdução (-1.5.1)
+|    5 |  29set | introdução (1.5.2-5, 1.6-1.6.4, 1.7)
+|    6 |   4out | processos (2-2.1.6)
+|    7 |   6out | processos (2.1.7, 2.4-2.4.1)
+|    8 |  11out | processos (2.4.2-4, escalonamento de proc. t. real (cap7 ed3))
+|    9 |  13out | threads (2.2) [exemplo](ex-thr.c)
+|   10 |  18out | comunicação entre processos (2.3-2.3.3)
+|   11 |  20out | comunicação entre processos (2.3.3-2.3.7) (o que é um [semáforo](Complementos/semaforo.md))
+|   12 |  25out | comunicação entre processos (2.5)
+|   13 |  27out | comunicação entre processos (2.5)
+|   14 |   1nov | gerenciamento de memória (3-3.2)
+|   15 |   3nov | gerenciamento de memória (3.3-3.3.2,3.4-3.4.7)
+|      |   8nov | JAI
+|      |  10nov | JAI
+|      |  15nov | feriado
+|      |  17nov | SAINF
+|   16 |  22nov |
+|   17 |  24nov |
+|   18 |  29nov | 
+|   19 |   1dez | 
+|   20 |   6dez | 
+|      |   8dez | feriado
+|      |  13dez | não tem aula
+|      |  15dez | não tem aula
+|      |  20dez | recesso
+|      |  22dez | recesso
+|      |  27dez | recesso
+|      |  29dez | recesso
+|   21 |   3jan | 
+|   22 |   5jan |
+|   23 |  10jan |
+|   24 |  12jan |
+|   25 |  17jan |
+|   26 |  19jan |
+|   27 |  24jan |
+|   28 |  26jan |
+|   29 |  31jan |
+|   30 |   2fev |
+|      | 7ou9fev | exame
 
-O escalonador pode ser o mais simples possível, escolhe qualquer dos processos que esteja pronto.
+## Trabalhos, provas, exercícios
 
-O funcionamento do SO no atendimento de uma interrupção deve ser algo como:
-- identifica o processo que foi interrompido
-- salva o contexto (estado do processador, conteúdo da memória) na entrada correspondente ao processo interrompido na tabela de processos (ou não, porque pode ser que nenhum processo estivesse em execução)
-- atende à interrupção
-- verifica se deve desbloquear algum processo bloqueado
-- chama o escalonador (escolhe o processo a executar)
-- faz o despacho — recupera o contexto, correspondente ao processo escolhido
+|    id |      prazo | assunto
+| ----: | ---------: | :-----------
+|    T0 |            | [simulador de CPU](t0)
+|    E1 |      28set | simulador de dispositivo de leitura de números aleatórios
+|    E2 |            | altere o E1 para ficar ocupado durante 10 instruções após cada leitura
+|    T1 |            | [implementação de processos](t1)
+|    T2 |            | [implementação de escalonador](t2)
+|    T3 |            | [implementação de paginação](t3)
 
-Caso o escalonador não tenha conseguido escolher nenhum processo (não tem nenhum processo pronto), o despacho simplesmente coloca a CPU em modo zumbi.
+Entrega do E1: junte os arquivos em um tar ou zip, envie por mail para benhur+so22b@inf.ufsm.br com assunto "SO-E1".
 
-Dá para otimizar realizando o salvamento de contexto logo antes da recuperação, e somente se o processo a executar for diferente do que executou a última vez.
+## Ementa
 
-A função so_ok deve causar o final da execução se não houver nenhum processo vivo no sistema.
+Ver [aqui](https://www.ufsm.br/ementario/disciplinas/elc1080/).
 
-### Dicas (e respostas a perguntas)
-
-O funcionamento do SO descrito acima é o que se espera que a função `so_int` faça. Atualmente ela faz só a parte de atender á interrupção (parcialmente).
-
-Implementando como descrito (salvando o estado do processador no início e recuperando no final), não esqueça que para alterar o valor de algum registrador de um processo deve-se alterar o estado salvo no descritor do processo.
