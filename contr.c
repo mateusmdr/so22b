@@ -107,7 +107,7 @@ static void str_estado(char *txt, exec_t *exec, mem_t *mem)
   int pc, opcode = -1;
   pc = cpue_PC(estado);
   mem_le(mem, pc, &opcode);
-  sprintf(txt, "PC=%04d A=%06d X=%06d %02d %s",
+  sprintf(txt, "MODO=%d PC=%04d A=%06d X=%06d %02d %s", cpue_modo(estado),
                 pc, cpue_A(estado), cpue_X(estado), opcode, instr_nome(opcode));
   // imprime argumento da instrução, se houver
   if (instr_num_args(opcode) > 0) {
