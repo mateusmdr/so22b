@@ -21,6 +21,8 @@ static proc_t* so_encontra_processo(so_t *self);
 static void so_troca_processo(so_t *self);
 static void so_carrega_processo(so_t *self, proc_t* proc);
 static void so_salva_processo(so_t *self, proc_t* proc);
+static void so_resolve_es(so_t* self);
+static void so_escalona(so_t* self);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -35,13 +37,6 @@ so_t *so_cria(contr_t *contr)
   proc_t* proc = so_cria_processo(self, 0);
   so_carrega_processo(self, proc);
 
-  // coloca a CPU em modo usuário
-  /*
-  exec_copia_estado(contr_exec(self->contr), self->cpue);
-  cpue_muda_modo(self->cpue, usuario);
-  exec_altera_estado(contr_exec(self->contr), self->cpue);
-  */
-
   return self;
 }
 
@@ -52,70 +47,32 @@ void so_destroi(so_t *self)
   free(self);
 }
 
-// trata chamadas de sistema
-
-// chamada de sistema para leitura de E/S
-// recebe em A a identificação do dispositivo
-// retorna em X o valor lido
-//            A o código de erro
+// chamada de sistema para leitura de E/S, marca o processo
+// atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_le(so_t *self)
 {
   int disp = cpue_A(self->cpue);
+  self->proc->estado = BLOQUEADO;
+  self->proc->disp = disp;
+  self->proc->acesso = leitura;
   
-  if(es_pronto(contr_es(self->contr), disp, leitura)) {
-    int val;
-    err_t err = es_le(contr_es(self->contr), disp, &val);
-    cpue_muda_A(self->cpue, err);
-    if (err == ERR_OK) {
-      cpue_muda_X(self->cpue, val);
-      // incrementa o PC
-      cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
-      // interrupção da cpu foi atendida
-      cpue_muda_erro(self->cpue, ERR_OK, 0);
-      so_salva_processo(self, self->proc);
-    }
-  }else {
-    self->proc->estado = BLOQUEADO;
-    self->proc->disp = disp;
-    self->proc->acesso = leitura;
-    so_troca_processo(self);
-  }
 }
 
-// chamada de sistema para escrita de E/S
-// recebe em A a identificação do dispositivo
-//           X o valor a ser escrito
-// retorna em A o código de erro
+// chamada de sistema para escrita de E/S, marca o processo
+// atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_escr(so_t *self)
 {
   int disp = cpue_A(self->cpue);
-  int val = cpue_X(self->cpue);
-
-  if(es_pronto(contr_es(self->contr), disp, escrita)) {
-    err_t err = es_escreve(contr_es(self->contr), disp, val);
-    cpue_muda_A(self->cpue, err);
-    // incrementa o PC
-    cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
-    // interrupção da cpu foi atendida
-    cpue_muda_erro(self->cpue, ERR_OK, 0);
-  }else {
-    self->proc->estado = BLOQUEADO;
-    self->proc->disp = disp;
-    self->proc->acesso = escrita;
-    so_troca_processo(self);
-  }
+  self->proc->estado = BLOQUEADO;
+  self->proc->disp = disp;
+  self->proc->acesso = escrita;
+  
 }
 
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
   so_finaliza_processo(self, self->proc);
-  if(SLIST_EMPTY(self->proc_list)) {
-    t_printf("Não resta nenhum processo na fila de execução.");
-    panico(self);
-    return;
-  }
-  so_troca_processo(self);
 }
 
 // chamada de sistema para criação de processo
@@ -147,28 +104,15 @@ static void so_trata_sisop(so_t *self)
       so_trata_sisop_cria(self);
       break;
     default:
-      t_printf("so: chamada de sistema não reconhecida %d\n", chamada);
+      t_printf("SO: chamada de sistema não reconhecida %d\n", chamada);
       panico(self);
   }
 }
 
 // trata uma interrupção de tempo do relógio
-// verifica se os processos marcados como bloqueados por e/s podem ser liberados
 static void so_trata_tic(so_t *self)
 {
-  proc_t* el;
-  SLIST_FOREACH(el, self->proc_list, entries){
-    if(el->estado == BLOQUEADO) {
-      if(es_pronto(contr_es(self->contr), el->disp, el->acesso)) {
-        el->estado = PRONTO;
-      }
-    }
-  }
-
-  // busca um processo caso nenhum esteja executando
-  if(self->proc == NULL) {
-    so_troca_processo(self);
-  }
+  // Vazio, por enquanto
 }
 
 // houve uma interrupção do tipo err — trate-a
@@ -185,10 +129,70 @@ void so_int(so_t *self, err_t err)
       break;
     default:
       t_printf("SO: interrupção não tratada [%s]", err_nome(err));
-      self->paniquei = true;
+      panico(self);
   }
 
+  so_resolve_es(self);
+  so_escalona(self);
+  
+  cpue_muda_erro(self->cpue, ERR_OK, 0); // interrupção da cpu foi atendida
   exec_altera_estado(contr_exec(self->contr), self->cpue);
+}
+
+/**Percorre todos os processos bloqueados
+ * e verifica os dispositivos de E/S estão
+ * prontos, resolvendo a solicitação
+*/
+static void so_resolve_es(so_t* self)
+{
+  // Salva o processo atual caso tenha sido bloqueado
+  if(self->proc != NULL && self->proc->estado == BLOQUEADO) {
+    so_salva_processo(self, self->proc);
+  }
+
+  proc_t* el;
+
+  SLIST_FOREACH(el, self->proc_list, entries){
+    int val = cpue_X(el->cpue);
+    err_t err;
+
+    if(el->estado != BLOQUEADO) continue;
+
+    if(!es_pronto(contr_es(self->contr), el->disp, el->acesso)) continue;
+
+    el->estado = PRONTO;
+    if(el->acesso == leitura) {
+      err = es_le(contr_es(self->contr), el->disp, &val);
+    }else {
+      err = es_escreve(contr_es(self->contr), el->disp, val);
+    }
+
+    cpue_muda_A(el->cpue, err);
+    if (err == ERR_OK) {
+      cpue_muda_X(el->cpue, val); // muda registrador X, no caso da leitura
+      cpue_muda_PC(el->cpue, cpue_PC(el->cpue)+2); // incrementa o PC
+    }
+
+    if(self->proc == el) {
+      so_carrega_processo(self, el);
+    }
+  }
+}
+
+/**
+ * Decide qual será o processo a ser executado
+ * e termina o SO caso não haja nenhum
+*/
+static void so_escalona(so_t* self)
+{
+  if(SLIST_EMPTY(self->proc_list)) {
+    panico(self);
+    return;
+  }
+  
+  if(self->proc == NULL || self->proc->estado == BLOQUEADO) {
+    so_troca_processo(self);
+  }  
 }
 
 // retorna false se o sistema deve ser desligado
@@ -217,6 +221,7 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   return proc;
 }
 
+// Destroi o processo atual
 static void so_finaliza_processo(so_t *self, proc_t* proc)
 {
   if(self->proc == proc) {
@@ -255,6 +260,9 @@ static void so_troca_processo(so_t *self) {
   // salva processo atual (caso exista)
   if(self->proc != NULL) {
     so_salva_processo(self, self->proc);
+    if(self->proc->estado == EXECUTANDO){
+      self->proc->estado = PRONTO;
+    } 
   }
 
   // Altera o processo atual
