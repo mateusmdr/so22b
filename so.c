@@ -9,14 +9,23 @@ typedef enum {
   SHORTEST
 } escalonador_t;
 
+/**
+ * Tabela de processos do SO
+*/
+
+typedef struct {
+  proc_list_t* bloqueados;
+  proc_list_t* prontos;
+  proc_t* atual;          // processo atual em execução (NULL caso nenhum)
+  int max_pid;            // último id de processo gerado
+  escalonador_t escalonador; // tipo de escalonador a ser utilizado
+} tab_proc_t;
+
 struct so_t {
   contr_t *contr;            // o controlador do hardware
   bool paniquei;             // apareceu alguma situação intratável
   cpu_estado_t *cpue;        // cópia do estado da CPU
-  proc_list_t* proc_list;    // lista contendo os processos do SO
-  int max_pid;               // último id de processo gerado
-  proc_t* proc;              // processo atual em execução (NULL caso nenhum)
-  escalonador_t escalonador; // tipo de escalonador a ser utilizado
+  tab_proc_t processos;      // tabela de processos do SO
 };
 
 #define MAX_QUANTUM 50
@@ -25,8 +34,10 @@ struct so_t {
 static void panico(so_t *self);
 static proc_t* so_cria_processo(so_t *self, int prog);
 static void so_finaliza_processo(so_t *self, proc_t* proc);
-static proc_t* so_encontra_processo(so_t *self);
-static void so_troca_processo(so_t *self);
+static void so_bloqueia_processo(so_t *self, proc_t* proc);
+static void so_desbloqueia_processo(so_t *self, proc_t* proc);
+static proc_t* so_encontra_first(so_t *self);
+static proc_t* so_encontra_shortest(so_t *self);
 static void so_carrega_processo(so_t *self, proc_t* proc);
 static void so_salva_processo(so_t *self, proc_t* proc);
 static void so_resolve_es(so_t* self);
@@ -39,9 +50,11 @@ so_t *so_cria(contr_t *contr)
   self->contr = contr;
   self->paniquei = false;
   self->cpue = cpue_cria();
-  self->proc_list = proc_list_cria();
-  self->max_pid = 0;
-  self->escalonador = ROUND_ROBIN;
+  self->processos.bloqueados = proc_list_cria();
+  self->processos.prontos = proc_list_cria();
+  self->processos.atual = NULL;
+  self->processos.max_pid = 0;
+  self->processos.escalonador = ROUND_ROBIN;
 
   proc_t* proc = so_cria_processo(self, 0);
   so_carrega_processo(self, proc);
@@ -52,7 +65,8 @@ so_t *so_cria(contr_t *contr)
 void so_destroi(so_t *self)
 {
   cpue_destroi(self->cpue);
-  proc_list_destroi(self->proc_list);
+  proc_list_destroi(self->processos.bloqueados);
+  proc_list_destroi(self->processos.prontos);
   free(self);
 }
 
@@ -60,28 +74,28 @@ void so_destroi(so_t *self)
 // atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_le(so_t *self)
 {
-  int disp = cpue_A(self->cpue);
-  self->proc->estado = BLOQUEADO;
-  self->proc->disp = disp;
-  self->proc->acesso = leitura;
-  
+  proc_t* atual = self->processos.atual;
+  atual->disp = cpue_A(self->cpue);
+  atual->acesso = leitura;
+
+  so_bloqueia_processo(self, atual);
 }
 
 // chamada de sistema para escrita de E/S, marca o processo
 // atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_escr(so_t *self)
 {
-  int disp = cpue_A(self->cpue);
-  self->proc->estado = BLOQUEADO;
-  self->proc->disp = disp;
-  self->proc->acesso = escrita;
+  proc_t* atual = self->processos.atual;
+  atual->disp = cpue_A(self->cpue);
+  atual->acesso = escrita;
   
+  so_bloqueia_processo(self, atual);
 }
 
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
-  so_finaliza_processo(self, self->proc);
+  so_finaliza_processo(self, self->processos.atual);
 }
 
 // chamada de sistema para criação de processo
@@ -121,10 +135,10 @@ static void so_trata_sisop(so_t *self)
 // trata uma interrupção de tempo do relógio
 static void so_trata_tic(so_t *self)
 {
-  if(self->proc == NULL) return;
+  if(self->processos.atual == NULL) return;
 
-  if(self->escalonador == ROUND_ROBIN) {
-    self->proc->quantum++;
+  if(self->processos.escalonador == ROUND_ROBIN) {
+    self->processos.atual->quantum++;
   }
 }
 
@@ -158,22 +172,14 @@ void so_int(so_t *self, err_t err)
 */
 static void so_resolve_es(so_t* self)
 {
-  // Salva o processo atual caso tenha sido bloqueado
-  if(self->proc != NULL && self->proc->estado == BLOQUEADO) {
-    so_salva_processo(self, self->proc);
-  }
-
   proc_t* el;
 
-  SLIST_FOREACH(el, self->proc_list, entries){
+  SLIST_FOREACH(el, self->processos.bloqueados, entries){
     int val = cpue_X(el->cpue);
     err_t err;
 
-    if(el->estado != BLOQUEADO) continue;
-
     if(!es_pronto(contr_es(self->contr), el->disp, el->acesso)) continue;
 
-    el->estado = PRONTO;
     if(el->acesso == leitura) {
       err = es_le(contr_es(self->contr), el->disp, &val);
     }else {
@@ -186,9 +192,7 @@ static void so_resolve_es(so_t* self)
       cpue_muda_PC(el->cpue, cpue_PC(el->cpue)+2); // incrementa o PC
     }
 
-    if(self->proc == el) {
-      so_carrega_processo(self, el);
-    }
+    so_desbloqueia_processo(self, el);
   }
 }
 
@@ -198,17 +202,25 @@ static void so_resolve_es(so_t* self)
 */
 static void so_escalona(so_t* self)
 {
-  if(SLIST_EMPTY(self->proc_list)) {
+  if(SLIST_EMPTY(self->processos.prontos) && SLIST_EMPTY(self->processos.bloqueados)) {
+    t_printf("SO: Nenhum processo disponível para o escalonador");
     panico(self);
     return;
   }
 
-  if(self->escalonador == ROUND_ROBIN) {
+  if(self->processos.atual == NULL) { // Nenhum processo em execução
+    if(SLIST_EMPTY(self->processos.prontos)) { // Nenhum processo pronto, coloca a CPU em modo zumbi
+      cpue_muda_modo(self->cpue, zumbi);
+      return;
+    }
 
-  }
-  
-  if(self->proc == NULL || self->proc->estado == BLOQUEADO) {
-    so_troca_processo(self);
+    proc_t* proc;
+    proc = self->processos.escalonador == ROUND_ROBIN ?
+      so_encontra_first(self) :
+      so_encontra_shortest(self)
+    ;
+
+    so_carrega_processo(self, proc);
   }
 }
 
@@ -218,13 +230,14 @@ bool so_ok(so_t *self)
   return !self->paniquei;
 }
 
+/** Cria um processo e o inicializa com o programa desejado */
 static proc_t* so_cria_processo(so_t *self, int prog)
 {
-  proc_t* proc = proc_cria(self->max_pid, mem_tam(contr_mem(self->contr)));
+  proc_t* proc = proc_cria(self->processos.max_pid, mem_tam(contr_mem(self->contr)));
   if(proc == NULL) return proc;
 
-  proc_list_insere(self->proc_list, proc);
-  self->max_pid++;
+  proc_list_push_front(self->processos.prontos, proc);
+  self->processos.max_pid++;
 
   t_printf("Processo %d criado", proc->id);
 
@@ -238,70 +251,70 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   return proc;
 }
 
-// Destroi o processo atual
+// Destroi um processo
 static void so_finaliza_processo(so_t *self, proc_t* proc)
 {
-  if(self->proc == proc) {
-    self->proc = NULL;
+  if(self->processos.atual == proc) {
+    self->processos.atual = NULL;
+    proc_destroi(proc);
+    return;
   }
-  proc_list_remove(self->proc_list, proc);
+
+  proc_list_pop(self->processos.bloqueados, proc);
+  proc_list_pop(self->processos.prontos, proc);
   proc_destroi(proc);
 }
   
 static void panico(so_t *self) 
 {
-  t_printf("Problema irrecuperável no SO");
   self->paniquei = true;
 }
 
 // Carrega um processo e o coloca em execução
 static void so_carrega_processo(so_t *self, proc_t* proc){
   // atualiza o estado do processo
-  proc->estado = EXECUTANDO;
-  // regista como processo em execução no SO
-  self->proc = proc;
+  proc_list_pop(self->processos.prontos, proc);
+  self->processos.atual = proc;
   // altera o estado da CPU para o armazenado no processo
-  cpue_copia(self->proc->cpue, self->cpue);
+  cpue_copia(proc->cpue, self->cpue);
   // carrega a memória do processo
-  mem_copia(self->proc->mem, contr_mem(self->contr));
+  mem_copia(proc->mem, contr_mem(self->contr));
   cpue_muda_modo(self->cpue, usuario);
 }
 
 // Salva o estado de um processo
 static void so_salva_processo(so_t *self, proc_t* proc){
-  cpue_copia(self->cpue, self->proc->cpue);
-  mem_copia(contr_mem(self->contr), self->proc->mem);
+  cpue_copia(self->cpue, proc->cpue);
+  mem_copia(contr_mem(self->contr), proc->mem);
 }
 
-static void so_troca_processo(so_t *self) {
-  // salva processo atual (caso exista)
-  if(self->proc != NULL) {
-    so_salva_processo(self, self->proc);
-    if(self->proc->estado == EXECUTANDO){
-      self->proc->estado = PRONTO;
-    } 
+// Bloqueia um processo, alterando a tabela de processos
+static void so_bloqueia_processo(so_t *self, proc_t* proc) {
+  if(proc == self->processos.atual) {
+    self->processos.atual = NULL;
+    so_salva_processo(self, proc);
+  }else {
+    proc_list_pop(self->processos.prontos, proc);
   }
 
-  // Altera o processo atual
-  proc_t* proc = so_encontra_processo(self);
-  if(proc == NULL) {
-    self->proc = NULL;
-    cpue_muda_modo(self->cpue, zumbi);
-    return;
-  }
-
-  so_carrega_processo(self, proc);
+  proc_list_push_front(self->processos.bloqueados, proc);
 }
 
-// Encontra e retorna um processo pronto para ser executado
+// Desbloqueia um processo, alterando a tabela de processos
+static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
+  proc_list_pop(self->processos.bloqueados, proc);
+
+  proc_list_push_front(self->processos.prontos, proc);
+}
+
+// Encontra e retorna o primeiro processo pronto para ser executado
 // NULL caso não haja nenhum
-static proc_t* so_encontra_processo(so_t *self) {
-  proc_t *el;
-  SLIST_FOREACH(el, self->proc_list, entries){
-    if(el->estado == PRONTO) {
-      return el;
-    }
-  }
+static proc_t* so_encontra_first(so_t *self) {
+  return SLIST_FIRST(self->processos.prontos);
+}
 
-  return NULL;
+// Encontra e retorna o processo "mais curto"
+// NULL caso não haja nenhum
+static proc_t* so_encontra_shortest(so_t *self) {
+  // TODO
 }

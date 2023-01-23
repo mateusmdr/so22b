@@ -12,19 +12,11 @@
 // Define a estrutura de um processo gerenciado pelo SO
 // E as funções de manipulação desta estrutura
 
-// Estado atual do processo
-typedef enum {
-    EXECUTANDO,
-    PRONTO,
-    BLOQUEADO
-} proc_estado_t;
-
 typedef struct proc_t {
     int id;
     int prog;
     cpu_estado_t* cpue;
     mem_t* mem; // Memória Principal
-    proc_estado_t estado;
     int disp; // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso; // Tipo de acesso (caso bloqueado por e/s)
     int quantum; // Valor utilizado pelo escalonador
@@ -47,12 +39,12 @@ bool proc_inicializa(proc_t* proc, int prog_id);
 proc_list_t* proc_list_cria();
 
 // destroi uma lista de processos
-void proc_list_destroi();
+void proc_list_destroi(proc_list_t* self);
 
-// insere um processo na lista
-void proc_list_insere(proc_list_t* self, proc_t* el);
+// insere um processo no início da lista
+void proc_list_push_front(proc_list_t* self, proc_t* el);
 
 // remove um processo da lista
-void proc_list_remove(proc_list_t* self, proc_t* el);
+void proc_list_pop(proc_list_t* self, proc_t* el);
 
 #endif
