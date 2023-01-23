@@ -21,10 +21,10 @@ typedef struct proc_t {
     acesso_t acesso; // Tipo de acesso (caso bloqueado por e/s)
     int quantum; // Valor utilizado pelo escalonador
 
-    SLIST_ENTRY(proc_t) entries;
+    STAILQ_ENTRY(proc_t) entries;
 } proc_t;
 
-typedef SLIST_HEAD(proc_list_t, proc_t) proc_list_t;
+typedef STAILQ_HEAD(proc_list_t, proc_t) proc_list_t;
 
 // aloca um processo
 proc_t* proc_cria(int id, int mem_tam);
@@ -43,6 +43,9 @@ void proc_list_destroi(proc_list_t* self);
 
 // insere um processo no início da lista
 void proc_list_push_front(proc_list_t* self, proc_t* el);
+
+// insere um processo no final da lista
+void proc_list_push_back(proc_list_t* self, proc_t* el);
 
 // remove um processo da lista
 void proc_list_pop(proc_list_t* self, proc_t* el);

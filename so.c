@@ -174,7 +174,7 @@ static void so_resolve_es(so_t* self)
 {
   proc_t* el;
 
-  SLIST_FOREACH(el, self->processos.bloqueados, entries){
+  STAILQ_FOREACH(el, self->processos.bloqueados, entries){
     int val = cpue_X(el->cpue);
     err_t err;
 
@@ -202,14 +202,14 @@ static void so_resolve_es(so_t* self)
 */
 static void so_escalona(so_t* self)
 {
-  if(SLIST_EMPTY(self->processos.prontos) && SLIST_EMPTY(self->processos.bloqueados)) {
+  if(STAILQ_EMPTY(self->processos.prontos) && STAILQ_EMPTY(self->processos.bloqueados)) {
     t_printf("SO: Nenhum processo disponível para o escalonador");
     panico(self);
     return;
   }
 
   if(self->processos.atual == NULL) { // Nenhum processo em execução
-    if(SLIST_EMPTY(self->processos.prontos)) { // Nenhum processo pronto, coloca a CPU em modo zumbi
+    if(STAILQ_EMPTY(self->processos.prontos)) { // Nenhum processo pronto, coloca a CPU em modo zumbi
       cpue_muda_modo(self->cpue, zumbi);
       return;
     }
@@ -310,11 +310,12 @@ static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
 // Encontra e retorna o primeiro processo pronto para ser executado
 // NULL caso não haja nenhum
 static proc_t* so_encontra_first(so_t *self) {
-  return SLIST_FIRST(self->processos.prontos);
+  return STAILQ_FIRST(self->processos.prontos);
 }
 
 // Encontra e retorna o processo "mais curto"
 // NULL caso não haja nenhum
 static proc_t* so_encontra_shortest(so_t *self) {
   // TODO
+  return NULL;
 }

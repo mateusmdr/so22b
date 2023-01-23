@@ -70,24 +70,28 @@ bool proc_inicializa(proc_t* proc, int prog_id) {
 
 proc_list_t* proc_list_cria() {
     proc_list_t* self = malloc(sizeof(proc_list_t));
-    SLIST_INIT(self);
+    STAILQ_INIT(self);
 
     return self;
 }
 
 void proc_list_destroi(proc_list_t* self) {
-    while(!SLIST_EMPTY(self)) {
-        proc_t* el = SLIST_FIRST(self);
-        SLIST_REMOVE_HEAD(self, entries);
+    while(!STAILQ_EMPTY(self)) {
+        proc_t* el = STAILQ_FIRST(self);
+        STAILQ_REMOVE_HEAD(self, entries);
         proc_destroi(el);
     }
     free(self);
 }
 
 void proc_list_push_front(proc_list_t* self, proc_t* el) {
-    SLIST_INSERT_HEAD(self, el, entries);
+    STAILQ_INSERT_HEAD(self, el, entries);
+}
+
+void proc_list_push_back(proc_list_t* self, proc_t* el) {
+    STAILQ_INSERT_TAIL(self, el, entries);
 }
 
 void proc_list_pop(proc_list_t* self, proc_t* el) {
-    SLIST_REMOVE(self, el, proc_t, entries);
+    STAILQ_REMOVE(self, el, proc_t, entries);
 }
