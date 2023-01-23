@@ -81,6 +81,7 @@ void proc_list_destroi(proc_list_t* self) {
         SLIST_REMOVE_HEAD(self, entries);
         proc_destroi(el);
     }
+    free(self);
 }
 
 void proc_list_push_front(proc_list_t* self, proc_t* el) {
