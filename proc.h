@@ -27,6 +27,7 @@ typedef struct proc_t {
     proc_estado_t estado;
     int disp; // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso; // Tipo de acesso (caso bloqueado por e/s)
+    int quantum; // Valor utilizado pelo escalonador
 
     SLIST_ENTRY(proc_t) entries;
 } proc_t;

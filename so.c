@@ -4,14 +4,22 @@
 #include <stdlib.h>
 #include <sys/queue.h>
 
+typedef enum {
+  ROUND_ROBIN,
+  SHORTEST
+} escalonador_t;
+
 struct so_t {
-  contr_t *contr;       // o controlador do hardware
-  bool paniquei;        // apareceu alguma situação intratável
-  cpu_estado_t *cpue;   // cópia do estado da CPU
-  proc_list_t* proc_list;   // lista contendo os processos do SO
-  int max_pid;      // último id de processo gerado
-  proc_t* proc;         // processo atual em execução (NULL caso nenhum)
+  contr_t *contr;            // o controlador do hardware
+  bool paniquei;             // apareceu alguma situação intratável
+  cpu_estado_t *cpue;        // cópia do estado da CPU
+  proc_list_t* proc_list;    // lista contendo os processos do SO
+  int max_pid;               // último id de processo gerado
+  proc_t* proc;              // processo atual em execução (NULL caso nenhum)
+  escalonador_t escalonador; // tipo de escalonador a ser utilizado
 };
+
+#define MAX_QUANTUM 50
 
 // funções auxiliares
 static void panico(so_t *self);
@@ -33,6 +41,7 @@ so_t *so_cria(contr_t *contr)
   self->cpue = cpue_cria();
   self->proc_list = proc_list_cria();
   self->max_pid = 0;
+  self->escalonador = ROUND_ROBIN;
 
   proc_t* proc = so_cria_processo(self, 0);
   so_carrega_processo(self, proc);
@@ -112,7 +121,11 @@ static void so_trata_sisop(so_t *self)
 // trata uma interrupção de tempo do relógio
 static void so_trata_tic(so_t *self)
 {
-  // Vazio, por enquanto
+  if(self->proc == NULL) return;
+
+  if(self->escalonador == ROUND_ROBIN) {
+    self->proc->quantum++;
+  }
 }
 
 // houve uma interrupção do tipo err — trate-a
@@ -189,10 +202,14 @@ static void so_escalona(so_t* self)
     panico(self);
     return;
   }
+
+  if(self->escalonador == ROUND_ROBIN) {
+
+  }
   
   if(self->proc == NULL || self->proc->estado == BLOQUEADO) {
     so_troca_processo(self);
-  }  
+  }
 }
 
 // retorna false se o sistema deve ser desligado
@@ -204,18 +221,18 @@ bool so_ok(so_t *self)
 static proc_t* so_cria_processo(so_t *self, int prog)
 {
   proc_t* proc = proc_cria(self->max_pid, mem_tam(contr_mem(self->contr)));
-  proc_list_insere(self->proc_list, proc);
+  if(proc == NULL) return proc;
 
-  int pid = self->max_pid;
+  proc_list_insere(self->proc_list, proc);
   self->max_pid++;
 
-  t_printf("Processo %d criado", pid);
+  t_printf("Processo %d criado", proc->id);
 
   if(!proc_inicializa(proc, prog)) {
     so_finaliza_processo(self, proc);
-    t_printf("Falha na inicialização do processo %d", pid);
+    t_printf("Falha na inicialização do processo %d", proc->id);
   }else {
-    t_printf("Processo %d inicializado", pid);
+    t_printf("Processo %d inicializado", proc->id);
   }
 
   return proc;

@@ -40,6 +40,7 @@ proc_t* proc_cria(int id, int mem_tam) {
         proc->cpue = cpue_cria();
         proc->estado = PRONTO;
         proc->id = id;
+        proc->quantum = 0;
     }
 
     return proc;
