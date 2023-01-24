@@ -1,23 +1,23 @@
 ; programa de exemplo para SO
-; gera 10 números aleatórios em um vetor, ordena o vetor, imprime o primeiro e o último valores no vetor
+; lê 1000 números aleatórios em um vetor, imprime o primeiro e o último valores no vetor duas vezes
 
 ; chamadas de sistema
 SO_LE   define 1
 SO_ESCR define 2
 SO_FIM  define 3
 ; dispositivos de E/S
-TELA    DEFINE 1
+TELA    DEFINE 0
 RANDOM  DEFINE 3  ; altere para o seu dispositivo de números aleatórios
 
-TAMANHO DEFINE 10
-TAM_1   DEFINE 9 ; um a menos que o tamanho
+TAMANHO DEFINE 1000
+TAM_1   DEFINE 999 ; um a menos que o tamanho
 
 main
         cargi TAMANHO
         armm tam_vet
         chama enche_vet
         chama imprime_vet
-        chama ordena_vet
+        ;chama ordena_vet
         chama imprime_vet
         ; termina
         sisop SO_FIM
@@ -25,10 +25,10 @@ main
 tam_vet espaco 1
 vet     espaco TAMANHO
 
-; le_int: lê um inteiro do teclado, retorna em A
+; le_int: lê um inteiro de random, retorna em A
 le_int  espaco 1
 le_de_novo
-        cargi TELA
+        cargi RANDOM
         sisop SO_LE       ; retorna A=err, X=dado
         desvnz le_de_novo ; se der erro, tenta de novo
         mvxa
@@ -40,9 +40,9 @@ enche_vet espaco 1
         cargi 0
         armm e_ind
 e_laco
-        ; e_tmp = número aleatório entre 0 e 999
-        cargi 1000
-        chama aleat
+        ; e_tmp = número aleatório lido
+        chama le_int
+        resto mil
         armm e_tmp
         ; vet[e_ind] = e_tmp
         cargm e_ind
@@ -59,6 +59,7 @@ e_laco
         ret enche_vet
 e_ind   espaco 1
 e_tmp   espaco 1
+mil     valor 1000
 
 ; imp_int: imprime o valor em A na TELA
 imp_int espaco 1

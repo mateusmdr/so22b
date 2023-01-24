@@ -17,8 +17,8 @@ Você deve também computar algumas métricas do sistema. Considere como um mín
 - tempo total de uso da CPU (é o tempo acima menos o tempo que a CPU ficou parada)
 - número de interrupções atendidas
 - para cada processo:
-  - tempo de retorno (tempo entre criação e término)
-  - tempo total bloqueado (tempo no estado B)
+  - tempo de retorno (tempo entre criação e término) OK
+  - tempo total bloqueado (tempo no estado B) OK
   - tempo total de CPU (tempo no estado E)
   - tempo total de espera (tempo no estado P)
   - tempo médio de retorno (média do tempo entre sair do estado B e entrar no E)

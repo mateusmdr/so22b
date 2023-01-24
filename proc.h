@@ -12,14 +12,33 @@
 // Define a estrutura de um processo gerenciado pelo SO
 // E as funções de manipulação desta estrutura
 
+typedef struct {
+    /** Variáveis auxiliares*/
+    int hora_criacao;
+    int hora_bloqueio;
+    int hora_desbloqueio_preempcao;
+    int hora_execucao;
+    int ultimo_tempo_bloqueio;
+
+    /** Métricas do processo */
+    int tempo_total;
+    int tempo_bloqueado;
+    int tempo_CPU;
+    int tempo_espera;
+    int tempo_medio_retorno;
+    int bloqueios;
+    int preempcoes;
+} proc_metricas_t;
+
 typedef struct proc_t {
     int id;
     int prog;
-    cpu_estado_t* cpue;
-    mem_t* mem; // Memória Principal
-    int disp; // Número do dispositivo (caso bloqueado por e/s)
-    acesso_t acesso; // Tipo de acesso (caso bloqueado por e/s)
-    int quantum; // Valor utilizado pelo escalonador
+    cpu_estado_t* cpue;       // Estado da CPU do processo
+    mem_t* mem;               // Memória Principal
+    int disp;                 // Número do dispositivo (caso bloqueado por e/s)
+    acesso_t acesso;          // Tipo de acesso (caso bloqueado por e/s)
+    int quantum;              // Valor utilizado pelo escalonador
+    proc_metricas_t metricas; // Métricas do processo
 
     STAILQ_ENTRY(proc_t) entries;
 } proc_t;

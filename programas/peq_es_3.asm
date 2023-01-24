@@ -6,7 +6,7 @@ SO_LE   define 1
 SO_ESCR define 2
 SO_FIM  define 3
 ; dispositivos de E/S
-TELA    DEFINE 1
+TELA    DEFINE 3
 RANDOM  DEFINE 3  ; altere para o seu dispositivo de números aleatórios
 
 TAMANHO DEFINE 10

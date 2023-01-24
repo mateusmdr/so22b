@@ -3,42 +3,7 @@
 #include "mem.h"
 #include "proc.h"
 #include "cpu_estado.h"
-
-int progr0[] = {
-#include "programas/init.maq"
-};
-
-int progr1[] = {
-#include "programas/peq_es.maq"
-};
-
-int progr2[] = {
-#include "programas/grande_es.maq"
-};
-
-int progr3[] = {
-#include "programas/peq_cpu.maq"
-};
-
-int progr4[] = {
-#include "programas/grande_cpu.maq"
-};
-
-// programas disponíveis
-int *progrs[] = {
-    progr0,
-    progr1,
-    progr2,
-    progr3,
-    progr4
-};
-int progrs_size[] = {
-    sizeof(progr0),
-    sizeof(progr1),
-    sizeof(progr2),
-    sizeof(progr3),
-    sizeof(progr4)
-};
+#include "progr.c"
 
 proc_t* proc_cria(int id, int mem_tam) {
     proc_t* proc = (proc_t*) malloc(sizeof(proc_t));

@@ -108,7 +108,7 @@ void contr_laco(contr_t *self)
 }
  
 
-static void str_estado(char *txt, exec_t *exec, mem_t *mem)
+static void str_estado(char *txt, exec_t *exec, mem_t *mem, so_t* so)
 {
   // pega o estado da CPU, imprime registradores, opcode, instrução
   cpu_estado_t *estado = cpue_cria();
@@ -139,6 +139,6 @@ static void str_estado(char *txt, exec_t *exec, mem_t *mem)
 void contr_atualiza_estado(contr_t *self)
 {
   char s[N_COL+1];
-  str_estado(s, self->exec, self->mem);
+  str_estado(s, self->exec, self->mem, self->so);
   t_status(s);
 }

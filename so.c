@@ -35,7 +35,7 @@ typedef struct {
   int tempo_parado;
   int interrupcoes;
   int sisops;
-} metricas_so_t;
+} so_metricas_t;
 
 struct so_t {
   contr_t *contr;            // o controlador do hardware
@@ -43,7 +43,7 @@ struct so_t {
   cpu_estado_t *cpue;        // cópia do estado da CPU
   rel_t *rel;                // referência do relógio do controlador
   tab_proc_t processos;      // tabela de processos do SO
-  metricas_so_t metricas;    // métricas do SO
+  so_metricas_t metricas;    // métricas do SO
 };
 
 #define MAX_QUANTUM 50
@@ -52,7 +52,7 @@ struct so_t {
 static void panico(so_t *self);
 static proc_t* so_cria_processo(so_t *self, int prog);
 static void so_finaliza_processo(so_t *self, proc_t* proc);
-static void so_bloqueia_processo(so_t *self, proc_t* proc);
+static void so_bloqueia_processo(so_t *self);
 static void so_desbloqueia_processo(so_t *self, proc_t* proc);
 static proc_t* so_encontra_first(so_t *self);
 static proc_t* so_encontra_shortest(so_t *self);
@@ -63,7 +63,7 @@ static void so_escalona(so_t* self);
 static void so_ativa_cpu(so_t* self);
 static void so_desativa_cpu(so_t* self);
 static void so_imprime_metricas(so_t* self);
-// static void so_imprime_metricas_processo(so_t* self, proc_t* proc);
+static void so_imprime_metricas_processo(so_t* self, proc_t* proc);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -115,7 +115,7 @@ static void so_trata_sisop_le(so_t *self)
   atual->disp = cpue_A(self->cpue);
   atual->acesso = leitura;
 
-  so_bloqueia_processo(self, atual);
+  so_bloqueia_processo(self);
 }
 
 // chamada de sistema para escrita de E/S, marca o processo
@@ -126,7 +126,7 @@ static void so_trata_sisop_escr(so_t *self)
   atual->disp = cpue_A(self->cpue);
   atual->acesso = escrita;
   
-  so_bloqueia_processo(self, atual);
+  so_bloqueia_processo(self);
 }
 
 // chamada de sistema para término do processo
@@ -261,17 +261,29 @@ static void so_escalona(so_t* self)
   if(atual == NULL) { // Nenhum processo em execução
     proc = self->processos.escalonador == ROUND_ROBIN ? so_encontra_first(self) : so_encontra_shortest(self);
     proc->quantum = 0;
-  }else if(self->processos.escalonador == ROUND_ROBIN) {
-    if(atual->quantum <= MAX_QUANTUM) return; // Continua executando o processo atual
+  }else{
+    int agora = rel_agora(self->rel);
+    if(self->processos.escalonador == ROUND_ROBIN) {
+      if(atual->quantum <= MAX_QUANTUM) return; // Continua executando o processo atual
+      proc = so_encontra_first(self);
+      atual->quantum = 0;
+    }else {
+      proc = so_encontra_shortest(self);
+
+      // Calcula o quantum do processo que foi colocado em preempção
+      int ultimo_tempo = agora - atual->metricas.hora_execucao;
+      if(atual->quantum == 0) {
+        atual->quantum = ultimo_tempo;
+      }else {
+        atual->quantum = (atual->quantum + ultimo_tempo)/2;
+      }
+    }
     // Salva o processo atual
     so_salva_processo(self, self->processos.atual);
     proc_list_push_back(self->processos.prontos, self->processos.atual);
-    // Substitui por um novo processo
-    proc = so_encontra_first(self);
-    proc_list_pop(self->processos.prontos, proc);
-    atual->quantum = 0;
-  }else {
-    // TODO
+
+    atual->metricas.hora_desbloqueio_preempcao = agora;
+    atual->metricas.ultimo_tempo_bloqueio = 0;
   }
 
   so_carrega_processo(self, proc);
@@ -306,6 +318,17 @@ static proc_t* so_cria_processo(so_t *self, int prog)
     t_printf("Processo %d inicializado com o programa %d", proc->id, prog);
   }
 
+  proc->metricas.hora_criacao = rel_agora(self->rel);
+  proc->metricas.ultimo_tempo_bloqueio = 0;
+
+  proc->metricas.tempo_total = 0;
+  proc->metricas.tempo_bloqueado = 0;
+  proc->metricas.tempo_CPU = 0;
+  proc->metricas.tempo_espera = 0;
+  proc->metricas.tempo_medio_retorno = 0;
+  proc->metricas.bloqueios = 0;
+  proc->metricas.preempcoes = 0;
+
   return proc;
 }
 
@@ -314,12 +337,16 @@ static void so_finaliza_processo(so_t *self, proc_t* proc)
 {
   if(self->processos.atual == proc) {
     self->processos.atual = NULL;
-    proc_destroi(proc);
-    return;
+  }else{
+    proc_list_pop(self->processos.bloqueados, proc);
+    proc_list_pop(self->processos.prontos, proc);
   }
+  int agora = rel_agora(self->rel);
+  proc->metricas.tempo_total = agora - proc->metricas.hora_criacao;
+  proc->metricas.tempo_CPU += agora - proc->metricas.hora_execucao;
 
-  proc_list_pop(self->processos.bloqueados, proc);
-  proc_list_pop(self->processos.prontos, proc);
+  so_imprime_metricas_processo(self, proc);
+
   proc_destroi(proc);
 }
 
@@ -343,6 +370,18 @@ static void so_carrega_processo(so_t *self, proc_t* proc){
   // carrega a memória do processo
   mem_copia(proc->mem, contr_mem(self->contr));
   so_ativa_cpu(self);
+
+  int agora = rel_agora(self->rel);
+  proc->metricas.hora_execucao = agora;
+  proc->metricas.tempo_espera += agora - proc->metricas.hora_desbloqueio_preempcao;
+  if(proc->metricas.ultimo_tempo_bloqueio == 0) return;
+
+  int tempo_retorno = agora - proc->metricas.ultimo_tempo_bloqueio;
+  if(proc->metricas.tempo_medio_retorno == 0) {
+    proc->metricas.tempo_medio_retorno = tempo_retorno;
+  }else {
+    proc->metricas.tempo_medio_retorno = (tempo_retorno + proc->metricas.tempo_medio_retorno)/2;
+  }
 }
 
 // Salva o estado de um processo
@@ -351,19 +390,24 @@ static void so_salva_processo(so_t *self, proc_t* proc){
   mem_copia(contr_mem(self->contr), proc->mem);
 }
 
-// Bloqueia um processo, alterando a tabela de processos
-static void so_bloqueia_processo(so_t *self, proc_t* proc) {
-  if(proc == self->processos.atual) {
-    self->processos.atual = NULL;
-    so_salva_processo(self, proc);
-  }else {
-    proc_list_pop(self->processos.prontos, proc);
-  }
+// Bloqueia o processo atual, alterando a tabela de processos
+static void so_bloqueia_processo(so_t *self) {
+  proc_t* proc = self->processos.atual;
+  self->processos.atual = NULL;
 
+  so_salva_processo(self, proc);
   proc_list_push_front(self->processos.bloqueados, proc);
+
   if(self->processos.escalonador == SHORTEST) {
     proc->quantum = (proc->quantum + proc->quantum /**TODO*/)/2;
   }
+  int agora = rel_agora(self->rel);
+  proc->metricas.bloqueios++;
+  proc->metricas.hora_bloqueio = agora;
+
+  // Calcula o quantum do processo que foi colocado em preempção
+  int ultimo_tempo = agora - proc->metricas.hora_execucao;
+  proc->quantum = (proc->quantum + ultimo_tempo)/2;
 }
 
 // Desbloqueia um processo, alterando a tabela de processos
@@ -372,6 +416,13 @@ static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
 
   // coloca o processo no final da lista
   proc_list_push_back(self->processos.prontos, proc);
+
+  int agora = rel_agora(self->rel);
+  int tempo_bloqueio = agora - proc->metricas.hora_bloqueio;
+
+  proc->metricas.tempo_bloqueado += tempo_bloqueio;
+  proc->metricas.hora_desbloqueio_preempcao = agora;
+  proc->metricas.ultimo_tempo_bloqueio = tempo_bloqueio;
 }
 
 // Encontra e retorna o primeiro processo pronto para ser executado
@@ -387,15 +438,31 @@ static proc_t* so_encontra_shortest(so_t *self) {
   return NULL;
 }
 
-// static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
-//   // TODO
-// }
+static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
+  char filename[64];
+  snprintf(filename, sizeof(filename), "%s%d%s", "./metricas/proc-", proc->id, ".txt");
+  FILE* file = fopen(filename, "w");
+  if(file == NULL) return;
+
+  proc_metricas_t metricas = proc->metricas;
+
+  fprintf(file, "Métricas do Processo PID=%d\n\n", proc->id);
+  fprintf(file, "Tempo entre criação e término (unidades de tempo): ..... %d\n", metricas.tempo_total);
+  fprintf(file, "Tempo total bloqueado (unidades de tempo): ............. %d\n", metricas.tempo_bloqueado);
+  fprintf(file, "Tempo total executando (unidades de tempo): ............ %d\n", metricas.tempo_CPU);
+  fprintf(file, "Tempo total em espera  (unidades de tempo): ............ %d\n", metricas.tempo_espera);
+  fprintf(file, "Tempo médio de retorno (unidades de tempo): ............ %d\n", metricas.tempo_medio_retorno);
+  fprintf(file, "Número de bloqueios: ................................... %d\n", metricas.bloqueios);
+  fprintf(file, "Número de preempções: .................................. %d\n", metricas.preempcoes);
+
+  fclose(file);
+}
 
 static void so_imprime_metricas(so_t* self) {
   FILE* file = fopen("./metricas/so.txt", "w");
   if(file == NULL) return;
 
-  metricas_so_t metricas = self->metricas;
+  so_metricas_t metricas = self->metricas;
   fprintf(file, "Métricas do Sistema Operacional\n\n");
   fprintf(file, "Tempo total do sistema (unidades de tempo):... %d\n", metricas.tempo_total);
   fprintf(file, "Tempo da CPU ativa (unidades de tempo): ...... %d\n", metricas.tempo_cpu);
