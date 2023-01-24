@@ -1,8 +1,10 @@
 #include "so.h"
 #include "tela.h"
 #include "proc.h"
+#include "rel.h"
 #include <stdlib.h>
 #include <sys/queue.h>
+#include <stdio.h>
 
 typedef enum {
   ROUND_ROBIN,
@@ -21,11 +23,27 @@ typedef struct {
   escalonador_t escalonador; // tipo de escalonador a ser utilizado
 } tab_proc_t;
 
+typedef struct {
+  /**Auxiliares*/
+  int hora_inicio;
+  int hora_bloqueio;
+  int hora_desbloqueio;
+
+  /**Métricas computadas*/ 
+  int tempo_total;
+  int tempo_cpu;
+  int tempo_parado;
+  int interrupcoes;
+  int sisops;
+} metricas_so_t;
+
 struct so_t {
   contr_t *contr;            // o controlador do hardware
   bool paniquei;             // apareceu alguma situação intratável
   cpu_estado_t *cpue;        // cópia do estado da CPU
+  rel_t *rel;                // referência do relógio do controlador
   tab_proc_t processos;      // tabela de processos do SO
+  metricas_so_t metricas;    // métricas do SO
 };
 
 #define MAX_QUANTUM 50
@@ -42,6 +60,10 @@ static void so_carrega_processo(so_t *self, proc_t* proc);
 static void so_salva_processo(so_t *self, proc_t* proc);
 static void so_resolve_es(so_t* self);
 static void so_escalona(so_t* self);
+static void so_ativa_cpu(so_t* self);
+static void so_desativa_cpu(so_t* self);
+static void so_imprime_metricas(so_t* self);
+// static void so_imprime_metricas_processo(so_t* self, proc_t* proc);
 
 so_t *so_cria(contr_t *contr)
 {
@@ -50,11 +72,20 @@ so_t *so_cria(contr_t *contr)
   self->contr = contr;
   self->paniquei = false;
   self->cpue = cpue_cria();
+  self->rel = contr_rel(self->contr);
+  /**Cria tabela de processos*/
   self->processos.bloqueados = proc_list_cria();
   self->processos.prontos = proc_list_cria();
   self->processos.atual = NULL;
   self->processos.max_pid = 0;
   self->processos.escalonador = ROUND_ROBIN;
+  /**Inicializa métricas do sistema*/
+  self->metricas.hora_inicio = rel_agora(self->rel);
+  self->metricas.interrupcoes = 0;
+  self->metricas.sisops = 0;
+  self->metricas.tempo_total = 0;
+  self->metricas.tempo_cpu = 0;
+  self->metricas.tempo_parado = 0;
 
   proc_t* proc = so_cria_processo(self, 0);
   so_carrega_processo(self, proc);
@@ -68,6 +99,12 @@ void so_destroi(so_t *self)
   proc_list_destroi(self->processos.bloqueados);
   proc_list_destroi(self->processos.prontos);
   free(self);
+}
+
+// retorna false se o sistema deve ser desligado
+bool so_ok(so_t *self)
+{
+  return !self->paniquei;
 }
 
 // chamada de sistema para leitura de E/S, marca o processo
@@ -112,6 +149,7 @@ static void so_trata_sisop_cria(so_t *self)
 // trata uma interrupção de chamada de sistema
 static void so_trata_sisop(so_t *self)
 {
+  self->metricas.sisops++;
   so_chamada_t chamada = cpue_complemento(self->cpue);
   switch (chamada) {
     case SO_LE:
@@ -145,6 +183,7 @@ static void so_trata_tic(so_t *self)
 // houve uma interrupção do tipo err — trate-a
 void so_int(so_t *self, err_t err)
 {
+  self->metricas.interrupcoes++;
   exec_copia_estado(contr_exec(self->contr), self->cpue);
 
   switch (err) {
@@ -214,7 +253,7 @@ static void so_escalona(so_t* self)
 
   // Todos os processos estão bloqueados, coloca em modo zumbi
   if(atual == NULL && nenhumPronto) {
-    cpue_muda_modo(self->cpue, zumbi);
+    so_desativa_cpu(self);
     return;
   }
 
@@ -238,10 +277,13 @@ static void so_escalona(so_t* self)
   so_carrega_processo(self, proc);
 }
 
-// retorna false se o sistema deve ser desligado
-bool so_ok(so_t *self)
-{
-  return !self->paniquei;
+static void so_ativa_cpu(so_t* self) {
+  cpue_muda_modo(self->cpue, usuario);
+  self->metricas.tempo_parado += self->metricas.hora_bloqueio - rel_agora(self->rel);
+}
+static void so_desativa_cpu(so_t* self) {
+  cpue_muda_modo(self->cpue, zumbi);
+  self->metricas.hora_bloqueio = rel_agora(self->rel);
 }
 
 /** Cria um processo e o inicializa com o programa desejado */
@@ -259,7 +301,7 @@ static proc_t* so_cria_processo(so_t *self, int prog)
     so_finaliza_processo(self, proc);
     t_printf("Falha na inicialização do processo %d", proc->id);
   }else {
-    t_printf("Processo %d inicializado", proc->id);
+    t_printf("Processo %d inicializado com o programa %d", proc->id, prog);
   }
 
   return proc;
@@ -278,10 +320,15 @@ static void so_finaliza_processo(so_t *self, proc_t* proc)
   proc_list_pop(self->processos.prontos, proc);
   proc_destroi(proc);
 }
-  
+
+// Desliga o sistema
 static void panico(so_t *self) 
 {
   self->paniquei = true;
+
+  self->metricas.tempo_total = self->metricas.hora_inicio - rel_agora(self->rel);
+  self->metricas.tempo_cpu = self->metricas.tempo_total - self->metricas.tempo_parado;
+  so_imprime_metricas(self);
 }
 
 // Carrega um processo e o coloca em execução
@@ -293,7 +340,7 @@ static void so_carrega_processo(so_t *self, proc_t* proc){
   cpue_copia(proc->cpue, self->cpue);
   // carrega a memória do processo
   mem_copia(proc->mem, contr_mem(self->contr));
-  cpue_muda_modo(self->cpue, usuario);
+  so_ativa_cpu(self);
 }
 
 // Salva o estado de um processo
@@ -312,18 +359,17 @@ static void so_bloqueia_processo(so_t *self, proc_t* proc) {
   }
 
   proc_list_push_front(self->processos.bloqueados, proc);
+  if(self->processos.escalonador == SHORTEST) {
+    proc->quantum = (proc->quantum + proc->quantum /**TODO*/)/2;
+  }
 }
 
 // Desbloqueia um processo, alterando a tabela de processos
 static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
   proc_list_pop(self->processos.bloqueados, proc);
 
-  if(self->processos.escalonador == ROUND_ROBIN) {
-    proc_list_push_back(self->processos.prontos, proc);
-  }else {
-    // TODO
-    proc_list_push_front(self->processos.prontos, proc);
-  }
+  // coloca o processo no final da lista
+  proc_list_push_back(self->processos.prontos, proc);
 }
 
 // Encontra e retorna o primeiro processo pronto para ser executado
@@ -337,4 +383,23 @@ static proc_t* so_encontra_first(so_t *self) {
 static proc_t* so_encontra_shortest(so_t *self) {
   // TODO
   return NULL;
+}
+
+// static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
+//   // TODO
+// }
+
+static void so_imprime_metricas(so_t* self) {
+  FILE* file = fopen("./metricas/so.txt", "w");
+  if(file == NULL) return;
+
+  metricas_so_t metricas = self->metricas;
+  fprintf(file, "\nMétricas do Sistema Operacional\n");
+  fprintf(file, "Tempo total do sistema (unidades de tempo): %d\n", metricas.tempo_total);
+  fprintf(file, "Tempo da CPU ativa (unidades de tempo): %d\n", metricas.tempo_cpu);
+  fprintf(file, "Tempo da CPU parada (unidades de tempo): %d\n", metricas.tempo_cpu);
+  fprintf(file, "Número de interrupções recebidas: %d\n", metricas.interrupcoes);
+  fprintf(file, "Número de sisops recebidas: %d\n", metricas.sisops);
+
+  fclose(file);
 }
