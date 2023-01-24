@@ -4,27 +4,27 @@
 #include "proc.h"
 #include "cpu_estado.h"
 
-// programas disponíveis
 int progr0[] = {
-#include "init.maq"
+#include "programas/init.maq"
 };
 
 int progr1[] = {
-#include "peq_es.maq"
+#include "programas/peq_es.maq"
 };
 
 int progr2[] = {
-#include "grande_es.maq"
+#include "programas/grande_es.maq"
 };
 
 int progr3[] = {
-#include "peq_cpu.maq"
+#include "programas/peq_cpu.maq"
 };
 
 int progr4[] = {
-#include "grande_cpu.maq"
+#include "programas/grande_cpu.maq"
 };
 
+// programas disponíveis
 int *progrs[] = {
     progr0,
     progr1,
