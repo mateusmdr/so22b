@@ -17,15 +17,27 @@ int progr2[] = {
 #include "grande_es.maq"
 };
 
+int progr3[] = {
+#include "peq_cpu.maq"
+};
+
+int progr4[] = {
+#include "grande_cpu.maq"
+};
+
 int *progrs[] = {
     progr0,
     progr1,
-    progr2
+    progr2,
+    progr3,
+    progr4
 };
 int progrs_size[] = {
     sizeof(progr0),
     sizeof(progr1),
-    sizeof(progr2)
+    sizeof(progr2),
+    sizeof(progr3),
+    sizeof(progr4)
 };
 
 proc_t* proc_cria(int id, int mem_tam) {
@@ -52,7 +64,7 @@ void proc_destroi(proc_t* proc) {
 }
 
 bool proc_inicializa(proc_t* proc, int prog_id) {
-    if(prog_id > sizeof(progrs)-1 || prog_id < 0) {
+    if(prog_id > sizeof(progrs)/4-1 || prog_id < 0) {
         return false;
     }
 
