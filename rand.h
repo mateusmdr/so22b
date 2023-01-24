@@ -1,6 +1,8 @@
 #ifndef RAND_H
 #define RAND_H
 
+#include <stdbool.h>
+#include "es.h"
 #include "err.h"
 
 // dispositivo de geração de valores aleatórios
@@ -18,5 +20,7 @@ void rand_destroi(rand_t *self);
 // caso operação (id) = 0
 // lê um número inteiro do dispositivo e o coloca em pvalor
 err_t rand_le(void *disp, int id, int *pvalor);
+
+bool rand_pronto(void *disp, int id, acesso_t acesso);
 
 #endif // RAND_H

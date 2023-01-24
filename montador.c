@@ -7,6 +7,7 @@
 #include <ctype.h>
 
 #include "instr.h"
+#include "montador.h"
 
 // auxiliares
 
@@ -31,7 +32,6 @@ bool tem_numero(char *s, int *num)
 
 // representa a memória do programa -- a saída do montador é colocada aqui
 
-#define MEM_TAM 8000    // aumentar para programas maiores
 int mem[MEM_TAM];
 int mem_pos;        // próxima posiçao livre da memória
 

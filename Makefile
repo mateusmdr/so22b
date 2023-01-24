@@ -26,4 +26,4 @@ proc.o: proc.c ${MAQS}
 	./montador $*.asm > $*.maq
 
 clean:
-	rm ${OBJS} ${OBJS_MONT} ${TARGETS} ${MAQS}
+	rm ${OBJS} montador.o ${TARGETS} ${MAQS}

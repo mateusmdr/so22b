@@ -39,3 +39,7 @@ err_t rand_le(void *disp, int id, int *pvalor)
 
     return ERR_OK;
 }
+
+bool rand_pronto(void *disp, int id, acesso_t acesso) {
+    return true;
+}

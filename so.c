@@ -39,14 +39,15 @@ typedef struct {
 
 struct so_t {
   contr_t *contr;            // o controlador do hardware
-  bool paniquei;             // apareceu alguma situação intratável
+  bool paniquei;             // apareceu alguma situação intratávele
   cpu_estado_t *cpue;        // cópia do estado da CPU
   rel_t *rel;                // referência do relógio do controlador
   tab_proc_t processos;      // tabela de processos do SO
   so_metricas_t metricas;    // métricas do SO
 };
 
-#define MAX_QUANTUM 50
+#define MAX_QUANTUM 5
+#define PROGRAMA_INICIAL 8
 
 // funções auxiliares
 static void panico(so_t *self);
@@ -87,7 +88,7 @@ so_t *so_cria(contr_t *contr)
   self->metricas.tempo_cpu = 0;
   self->metricas.tempo_parado = 0;
 
-  proc_t* proc = so_cria_processo(self, 0);
+  proc_t* proc = so_cria_processo(self, PROGRAMA_INICIAL);
   so_carrega_processo(self, proc);
 
   return self;
@@ -101,10 +102,15 @@ void so_destroi(so_t *self)
   free(self);
 }
 
-// retorna false se o sistema deve ser desligado
 bool so_ok(so_t *self)
 {
   return !self->paniquei;
+}
+
+int so_pid(so_t* self) {
+  if(self->processos.atual == NULL) return -1;
+
+  return self->processos.atual->id;
 }
 
 // chamada de sistema para leitura de E/S, marca o processo
@@ -114,7 +120,7 @@ static void so_trata_sisop_le(so_t *self)
   proc_t* atual = self->processos.atual;
   atual->disp = cpue_A(self->cpue);
   atual->acesso = leitura;
-
+  t_printf("Processo %d tentando ler do dispositivo %d", atual->id, atual->disp);
   so_bloqueia_processo(self);
 }
 
@@ -125,6 +131,7 @@ static void so_trata_sisop_escr(so_t *self)
   proc_t* atual = self->processos.atual;
   atual->disp = cpue_A(self->cpue);
   atual->acesso = escrita;
+  t_printf("Processo %d tentando escrever no dispositivo %d", atual->id, atual->disp);
   
   so_bloqueia_processo(self);
 }
@@ -165,8 +172,8 @@ static void so_trata_sisop(so_t *self)
       so_trata_sisop_cria(self);
       break;
     default:
-      t_printf("SO: chamada de sistema não reconhecida %d\n", chamada);
-      panico(self);
+      t_printf("SO: chamada de sistema não reconhecida %d feita pelo processo %d\n", chamada, self->processos.atual->id);
+      so_finaliza_processo(self, self->processos.atual);
   }
 }
 
@@ -194,8 +201,8 @@ void so_int(so_t *self, err_t err)
       so_trata_tic(self);
       break;
     default:
-      t_printf("SO: interrupção não tratada [%s]", err_nome(err));
-      panico(self);
+      t_printf("SO: interrupção não tratada [%s] feita pelo processo %d", err_nome(err), self->processos.atual->id);
+      so_finaliza_processo(self, self->processos.atual);
   }
 
   so_resolve_es(self);
@@ -216,9 +223,9 @@ static void so_resolve_es(so_t* self)
   STAILQ_FOREACH(el, self->processos.bloqueados, entries){
     int val = cpue_X(el->cpue);
     err_t err;
-
+    t_printf("Processo %d esperando dispositivo %d", el->id, el->disp);
     if(!es_pronto(contr_es(self->contr), el->disp, el->acesso)) continue;
-
+    t_printf("Dispositivo %d liberado para o processo %d", el->disp, el->id);
     if(el->acesso == leitura) {
       err = es_le(contr_es(self->contr), el->disp, &val);
     }else {
@@ -404,6 +411,7 @@ static void so_bloqueia_processo(so_t *self) {
   int agora = rel_agora(self->rel);
   proc->metricas.bloqueios++;
   proc->metricas.hora_bloqueio = agora;
+  proc->metricas.tempo_CPU += agora - proc->metricas.hora_execucao;
 
   // Calcula o quantum do processo que foi colocado em preempção
   int ultimo_tempo = agora - proc->metricas.hora_execucao;

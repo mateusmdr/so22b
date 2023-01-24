@@ -44,8 +44,10 @@ contr_t *contr_cria(void)
   self->es = es_cria();
   es_registra_dispositivo(self->es, 0, self->term, 0, term_le, term_escr, term_pronto);
   es_registra_dispositivo(self->es, 1, self->term, 1, term_le, term_escr, term_pronto);
-  es_registra_dispositivo(self->es, 2, self->rel, 0, rel_le, NULL, NULL);
-  es_registra_dispositivo(self->es, 3, self->rand, 1, rand_le, NULL, NULL);
+  es_registra_dispositivo(self->es, 2, self->term, 2, term_le, term_escr, term_pronto);
+  es_registra_dispositivo(self->es, 3, self->term, 3, term_le, term_escr, term_pronto);
+  es_registra_dispositivo(self->es, 4, self->rel, 0, rel_le, NULL, NULL);
+  es_registra_dispositivo(self->es, 5, self->rand, 0, rand_le, NULL, rand_pronto);
   // cria a unidade de execução e inicializa com a memória e E/S
   self->exec = exec_cria(self->mem, self->es);
   self->so = NULL;
@@ -116,7 +118,7 @@ static void str_estado(char *txt, exec_t *exec, mem_t *mem, so_t* so)
   int pc, opcode = -1;
   pc = cpue_PC(estado);
   mem_le(mem, pc, &opcode);
-  sprintf(txt, "MODO=%d PC=%04d A=%06d X=%06d %02d %s", cpue_modo(estado),
+  sprintf(txt, "PID=%d PC=%04d A=%06d X=%06d %02d %s", so_pid(so),
                 pc, cpue_A(estado), cpue_X(estado), opcode, instr_nome(opcode));
   // imprime argumento da instrução, se houver
   if (instr_num_args(opcode) > 0) {
