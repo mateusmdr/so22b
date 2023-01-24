@@ -202,26 +202,40 @@ static void so_resolve_es(so_t* self)
 */
 static void so_escalona(so_t* self)
 {
-  if(STAILQ_EMPTY(self->processos.prontos) && STAILQ_EMPTY(self->processos.bloqueados)) {
+  bool nenhumPronto = STAILQ_EMPTY(self->processos.prontos);
+  bool nenhumBloqueado = STAILQ_EMPTY(self->processos.bloqueados);
+  proc_t* atual = self->processos.atual;
+
+  if(nenhumPronto && nenhumBloqueado && atual == NULL) {
     t_printf("SO: Nenhum processo disponível para o escalonador");
     panico(self);
     return;
   }
 
-  if(self->processos.atual == NULL) { // Nenhum processo em execução
-    if(STAILQ_EMPTY(self->processos.prontos)) { // Nenhum processo pronto, coloca a CPU em modo zumbi
-      cpue_muda_modo(self->cpue, zumbi);
-      return;
-    }
-
-    proc_t* proc;
-    proc = self->processos.escalonador == ROUND_ROBIN ?
-      so_encontra_first(self) :
-      so_encontra_shortest(self)
-    ;
-
-    so_carrega_processo(self, proc);
+  // Todos os processos estão bloqueados, coloca em modo zumbi
+  if(atual == NULL && nenhumPronto) {
+    cpue_muda_modo(self->cpue, zumbi);
+    return;
   }
+
+  proc_t* proc;
+  if(atual == NULL) { // Nenhum processo em execução
+    proc = self->processos.escalonador == ROUND_ROBIN ? so_encontra_first(self) : so_encontra_shortest(self);
+    proc->quantum = 0;
+  }else if(self->processos.escalonador == ROUND_ROBIN) {
+    if(atual->quantum <= MAX_QUANTUM) return; // Continua executando o processo atual
+    // Salva o processo atual
+    so_salva_processo(self, self->processos.atual);
+    proc_list_push_back(self->processos.prontos, self->processos.atual);
+    // Substitui por um novo processo
+    proc = so_encontra_first(self);
+    proc_list_pop(self->processos.prontos, proc);
+    atual->quantum = 0;
+  }else {
+    // TODO
+  }
+
+  so_carrega_processo(self, proc);
 }
 
 // retorna false se o sistema deve ser desligado
@@ -304,7 +318,12 @@ static void so_bloqueia_processo(so_t *self, proc_t* proc) {
 static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
   proc_list_pop(self->processos.bloqueados, proc);
 
-  proc_list_push_front(self->processos.prontos, proc);
+  if(self->processos.escalonador == ROUND_ROBIN) {
+    proc_list_push_back(self->processos.prontos, proc);
+  }else {
+    // TODO
+    proc_list_push_front(self->processos.prontos, proc);
+  }
 }
 
 // Encontra e retorna o primeiro processo pronto para ser executado
