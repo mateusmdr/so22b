@@ -6,15 +6,15 @@
 
 // programas disponíveis
 int progr0[] = {
-  #include "init.maq"
+#include "init.maq"
 };
 
 int progr1[] = {
-  #include "p1.maq"
+#include "peq_es.maq"
 };
 
 int progr2[] = {
-  #include "p2.maq"
+#include "grande_es.maq"
 };
 
 int *progrs[] = {
