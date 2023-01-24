@@ -278,8 +278,10 @@ static void so_escalona(so_t* self)
 }
 
 static void so_ativa_cpu(so_t* self) {
-  cpue_muda_modo(self->cpue, usuario);
-  self->metricas.tempo_parado += self->metricas.hora_bloqueio - rel_agora(self->rel);
+  if(cpue_modo(self->cpue) != usuario) {
+    cpue_muda_modo(self->cpue, usuario);
+    self->metricas.tempo_parado += rel_agora(self->rel) - self->metricas.hora_bloqueio;
+  }
 }
 static void so_desativa_cpu(so_t* self) {
   cpue_muda_modo(self->cpue, zumbi);
@@ -326,7 +328,7 @@ static void panico(so_t *self)
 {
   self->paniquei = true;
 
-  self->metricas.tempo_total = self->metricas.hora_inicio - rel_agora(self->rel);
+  self->metricas.tempo_total = rel_agora(self->rel) - self->metricas.hora_inicio;
   self->metricas.tempo_cpu = self->metricas.tempo_total - self->metricas.tempo_parado;
   so_imprime_metricas(self);
 }
@@ -394,12 +396,12 @@ static void so_imprime_metricas(so_t* self) {
   if(file == NULL) return;
 
   metricas_so_t metricas = self->metricas;
-  fprintf(file, "\nMétricas do Sistema Operacional\n");
-  fprintf(file, "Tempo total do sistema (unidades de tempo): %d\n", metricas.tempo_total);
-  fprintf(file, "Tempo da CPU ativa (unidades de tempo): %d\n", metricas.tempo_cpu);
-  fprintf(file, "Tempo da CPU parada (unidades de tempo): %d\n", metricas.tempo_cpu);
-  fprintf(file, "Número de interrupções recebidas: %d\n", metricas.interrupcoes);
-  fprintf(file, "Número de sisops recebidas: %d\n", metricas.sisops);
+  fprintf(file, "Métricas do Sistema Operacional\n\n");
+  fprintf(file, "Tempo total do sistema (unidades de tempo):... %d\n", metricas.tempo_total);
+  fprintf(file, "Tempo da CPU ativa (unidades de tempo): ...... %d\n", metricas.tempo_cpu);
+  fprintf(file, "Tempo da CPU parada (unidades de tempo): ..... %d\n", metricas.tempo_parado);
+  fprintf(file, "Número de interrupções recebidas: ............ %d\n", metricas.interrupcoes);
+  fprintf(file, "Número de sisops recebidas: .................. %d\n", metricas.sisops);
 
   fclose(file);
 }
