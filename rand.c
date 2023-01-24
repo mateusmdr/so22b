@@ -12,7 +12,7 @@ rand_t *rand_cria(void)
     rand_t* self = malloc(sizeof(rand_t));
     srand(time(NULL));
     self->min = 0;
-    self->max = RAND_MAX;
+    self->max = 1000;
 
     return self;
 }
@@ -25,7 +25,7 @@ void rand_destroi(rand_t *self)
 // gera um número pseudo-aleatório entre min e max
 // usando a seed gerada quando o dispositivo foi iniciado
 int rand_inteiro(rand_t* self) {
-    return self->min + rand() % 100;
+    return self->min + rand() % self->max;
 }
 
 err_t rand_le(void *disp, int id, int *pvalor)
