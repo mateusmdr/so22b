@@ -37,7 +37,10 @@ typedef struct proc_t {
     mem_t* mem;               // Memória Principal
     int disp;                 // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso;          // Tipo de acesso (caso bloqueado por e/s)
-    int quantum;              // Valor utilizado pelo escalonador
+    // Valores utilizados pelos escalonadores
+    int quantum;
+    float tempo_esperado;
+
     proc_metricas_t metricas; // Métricas do processo
 
     STAILQ_ENTRY(proc_t) entries;

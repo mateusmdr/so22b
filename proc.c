@@ -5,11 +5,11 @@
 #include "cpu_estado.h"
 
 int progr0[] = {
-#include "programas/benchmark_cpu.maq"
+#include "programas/benchmark_es.maq"
 };
 
 int progr1[] = {
-#include "programas/benchmark_es.maq"
+#include "programas/benchmark_cpu.maq"
 };
 
 int progr2[] = {
@@ -93,7 +93,6 @@ proc_t* proc_cria(int id, int mem_tam) {
         }
         proc->cpue = cpue_cria();
         proc->id = id;
-        proc->quantum = 0;
     }
 
     return proc;

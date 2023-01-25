@@ -46,8 +46,9 @@ struct so_t {
   so_metricas_t metricas;    // métricas do SO
 };
 
-#define MAX_QUANTUM 5
-#define PROGRAMA_INICIAL 8
+#define MAX_QUANTUM 2
+#define PROGRAMA_INICIAL 1
+#define ESCALONADOR SHORTEST
 
 // funções auxiliares
 static void panico(so_t *self);
@@ -79,7 +80,7 @@ so_t *so_cria(contr_t *contr)
   self->processos.prontos = proc_list_cria();
   self->processos.atual = NULL;
   self->processos.max_pid = 0;
-  self->processos.escalonador = ROUND_ROBIN;
+  self->processos.escalonador = ESCALONADOR;
   /**Inicializa métricas do sistema*/
   self->metricas.hora_inicio = rel_agora(self->rel);
   self->metricas.interrupcoes = 0;
@@ -120,7 +121,6 @@ static void so_trata_sisop_le(so_t *self)
   proc_t* atual = self->processos.atual;
   atual->disp = cpue_A(self->cpue);
   atual->acesso = leitura;
-  t_printf("Processo %d tentando ler do dispositivo %d", atual->id, atual->disp);
   so_bloqueia_processo(self);
 }
 
@@ -131,7 +131,6 @@ static void so_trata_sisop_escr(so_t *self)
   proc_t* atual = self->processos.atual;
   atual->disp = cpue_A(self->cpue);
   atual->acesso = escrita;
-  t_printf("Processo %d tentando escrever no dispositivo %d", atual->id, atual->disp);
   
   so_bloqueia_processo(self);
 }
@@ -139,7 +138,9 @@ static void so_trata_sisop_escr(so_t *self)
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
+  int pid = self->processos.atual->id;
   so_finaliza_processo(self, self->processos.atual);
+  t_printf("Processo %d finalizado", pid);
 }
 
 // chamada de sistema para criação de processo
@@ -182,9 +183,7 @@ static void so_trata_tic(so_t *self)
 {
   if(self->processos.atual == NULL) return;
 
-  if(self->processos.escalonador == ROUND_ROBIN) {
-    self->processos.atual->quantum++;
-  }
+  self->processos.atual->quantum--;
 }
 
 // houve uma interrupção do tipo err — trate-a
@@ -223,7 +222,6 @@ static void so_resolve_es(so_t* self)
   STAILQ_FOREACH(el, self->processos.bloqueados, entries){
     int val = cpue_X(el->cpue);
     err_t err;
-    t_printf("Processo %d esperando dispositivo %d", el->id, el->disp);
     if(!es_pronto(contr_es(self->contr), el->disp, el->acesso)) continue;
     t_printf("Dispositivo %d liberado para o processo %d", el->disp, el->id);
     if(el->acesso == leitura) {
@@ -264,36 +262,30 @@ static void so_escalona(so_t* self)
     return;
   }
 
-  proc_t* proc;
-  if(atual == NULL) { // Nenhum processo em execução
-    proc = self->processos.escalonador == ROUND_ROBIN ? so_encontra_first(self) : so_encontra_shortest(self);
-    proc->quantum = 0;
-  }else{
-    int agora = rel_agora(self->rel);
-    if(self->processos.escalonador == ROUND_ROBIN) {
-      if(atual->quantum <= MAX_QUANTUM){ // Continua executando o processo atual
-        proc = atual;
-      }else {
-        proc = so_encontra_first(self);
-        atual->quantum = 0;
-      } 
-    }else {
-      proc = so_encontra_shortest(self);
+  if(atual != NULL && (nenhumPronto || atual->quantum >= 0)) return; // Continua executando o processo atual
 
-      // Calcula o quantum do processo que foi colocado em preempção
-      int ultimo_tempo = agora - atual->metricas.hora_execucao;
-      if(atual->quantum == 0) {
-        atual->quantum = ultimo_tempo;
-      }else {
-        atual->quantum = (atual->quantum + ultimo_tempo)/2;
-      }
-    }
+  // Preempção
+  proc_t* proc = (self->processos.escalonador == ROUND_ROBIN) ?
+    so_encontra_first(self) :
+    so_encontra_shortest(self);
+  int agora = rel_agora(self->rel);
+
+  proc->quantum = MAX_QUANTUM;
+  
+  if(atual != NULL) {
+    atual->metricas.preempcoes++;
+    atual->metricas.hora_desbloqueio_preempcao = agora;
+    atual->metricas.duracao_ultimo_bloqueio = 0;
+
     // Salva o processo atual
     so_salva_processo(self, self->processos.atual);
     proc_list_push_back(self->processos.prontos, self->processos.atual);
 
-    atual->metricas.hora_desbloqueio_preempcao = agora;
-    atual->metricas.duracao_ultimo_bloqueio = 0;
+    if(self->processos.escalonador == SHORTEST) {
+      // Calcula o tempo esperado do processo que foi colocado em preempção
+      int ultimo_tempo = agora - atual->metricas.hora_execucao;
+      atual->tempo_esperado = (atual->tempo_esperado + ultimo_tempo)/2;
+    }
   }
 
   so_carrega_processo(self, proc);
@@ -327,6 +319,9 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   }else {
     t_printf("Processo %d inicializado com o programa %d", proc->id, prog);
   }
+
+  proc->quantum = MAX_QUANTUM;
+  proc->tempo_esperado = MAX_QUANTUM;
 
   proc->metricas.hora_criacao = rel_agora(self->rel);
   proc->metricas.duracao_ultimo_bloqueio = 0;
@@ -404,22 +399,20 @@ static void so_salva_processo(so_t *self, proc_t* proc){
 // Bloqueia o processo atual, alterando a tabela de processos
 static void so_bloqueia_processo(so_t *self) {
   proc_t* proc = self->processos.atual;
+  int agora = rel_agora(self->rel);
   self->processos.atual = NULL;
 
   so_salva_processo(self, proc);
   proc_list_push_front(self->processos.bloqueados, proc);
 
   if(self->processos.escalonador == SHORTEST) {
-    proc->quantum = (proc->quantum + proc->quantum /**TODO*/)/2;
+    // Calcula o tempo esperado do processo que foi colocado em preempção
+    int ultimo_tempo = agora - proc->metricas.hora_execucao;
+    proc->tempo_esperado = (proc->tempo_esperado + ultimo_tempo)/2;
   }
-  int agora = rel_agora(self->rel);
   proc->metricas.bloqueios++;
   proc->metricas.hora_bloqueio = agora;
   proc->metricas.tempo_CPU += agora - proc->metricas.hora_execucao;
-
-  // Calcula o quantum do processo que foi colocado em preempção
-  int ultimo_tempo = agora - proc->metricas.hora_execucao;
-  proc->quantum = (proc->quantum + ultimo_tempo)/2;
 }
 
 // Desbloqueia um processo, alterando a tabela de processos
@@ -438,16 +431,20 @@ static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
 }
 
 // Encontra e retorna o primeiro processo pronto para ser executado
-// NULL caso não haja nenhum
 static proc_t* so_encontra_first(so_t *self) {
   return STAILQ_FIRST(self->processos.prontos);
 }
 
 // Encontra e retorna o processo "mais curto"
-// NULL caso não haja nenhum
 static proc_t* so_encontra_shortest(so_t *self) {
-  // TODO
-  return NULL;
+  proc_t *el, *shortest = STAILQ_FIRST(self->processos.prontos);
+  STAILQ_FOREACH(el, self->processos.prontos, entries) {
+    if(el->tempo_esperado < shortest->tempo_esperado) {
+      shortest = el;
+    }
+  }
+
+  return shortest;
 }
 
 static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
