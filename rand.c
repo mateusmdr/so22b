@@ -12,7 +12,7 @@ rand_t *rand_cria(void)
     rand_t* self = malloc(sizeof(rand_t));
     srand(time(NULL));
     self->min = 0;
-    self->max = 1000;
+    self->max = 10000;
 
     return self;
 }
@@ -40,6 +40,7 @@ err_t rand_le(void *disp, int id, int *pvalor)
     return ERR_OK;
 }
 
+// Tem 50% de chance de estar pronto
 bool rand_pronto(void *disp, int id, acesso_t acesso) {
-    return true;
+    return rand() % 2 == 0;
 }

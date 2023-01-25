@@ -18,14 +18,14 @@ typedef struct {
     int hora_bloqueio;
     int hora_desbloqueio_preempcao;
     int hora_execucao;
-    int ultimo_tempo_bloqueio;
+    int duracao_ultimo_bloqueio;
 
     /** Métricas do processo */
     int tempo_total;
     int tempo_bloqueado;
     int tempo_CPU;
     int tempo_espera;
-    int tempo_medio_retorno;
+    float tempo_medio_retorno;
     int bloqueios;
     int preempcoes;
 } proc_metricas_t;
