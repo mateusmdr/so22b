@@ -13,43 +13,43 @@ int progr1[] = {
 };
 
 int progr2[] = {
-#include "programas/grande_cpu_0.maq"
+#include "programas/grande_es_t0.maq"
 };
 
 int progr3[] = {
-#include "programas/grande_cpu_1.maq"
+#include "programas/grande_es_t1.maq"
 };
 
 int progr4[] = {
-#include "programas/peq_cpu_2.maq"
+#include "programas/peq_es_t2.maq"
 };
 
 int progr5[] = {
-#include "programas/peq_cpu_3.maq"
+#include "programas/peq_es_t3.maq"
 };
 
 int progr6[] = {
-#include "programas/grande_es_0.maq"
+#include "programas/grande_cpu_t4.maq"
 };
 
 int progr7[] = {
-#include "programas/grande_es_1.maq"
+#include "programas/grande_cpu_t5.maq"
 };
 
 int progr8[] = {
-#include "programas/peq_es_2.maq"
+#include "programas/peq_cpu_t6.maq"
 };
 
 int progr9[] = {
-#include "programas/peq_es_3.maq"
+#include "programas/peq_cpu_t7.maq"
 };
 
 int progr10[] = {
-#include "programas/peq_es_3.maq"
+#include "programas/p1.maq"
 };
 
 int progr11[] = {
-#include "programas/peq_es_3.maq"
+#include "programas/p2.maq"
 };
 
 // programas disponíveis

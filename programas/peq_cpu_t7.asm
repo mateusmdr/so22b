@@ -1,26 +1,23 @@
 ; programa de exemplo para SO
-; lê 10 números aleatórios em um vetor, imprime o primeiro e o último valores no vetor duas vezes
+; gera 5 números aleatórios em um vetor, ordena o vetor, imprime o primeiro e o último valores no vetor
 
 ; chamadas de sistema
 SO_LE   define 1
 SO_ESCR define 2
 SO_FIM  define 3
 ; dispositivos de E/S
-TELA    DEFINE 2
-RANDOM  DEFINE 5  ; altere para o seu dispositivo de números aleatórios
+TELA    DEFINE 7
+RANDOM  DEFINE 10 ; altere para o seu dispositivo de números aleatórios
 
-TAMANHO DEFINE 10
-TAM_1   DEFINE 9 ; um a menos que o tamanho
+TAMANHO DEFINE 5
+TAM_1   DEFINE 4 ; um a menos que o tamanho
 
 main
-        NOP
-        NOP
-        NOP
         cargi TAMANHO
         armm tam_vet
         chama enche_vet
         chama imprime_vet
-        ;chama ordena_vet
+        chama ordena_vet
         chama imprime_vet
         ; termina
         sisop SO_FIM
@@ -28,10 +25,10 @@ main
 tam_vet espaco 1
 vet     espaco TAMANHO
 
-; le_int: lê um inteiro de random, retorna em A
+; le_int: lê um inteiro do teclado, retorna em A
 le_int  espaco 1
 le_de_novo
-        cargi RANDOM
+        cargi TELA
         sisop SO_LE       ; retorna A=err, X=dado
         desvnz le_de_novo ; se der erro, tenta de novo
         mvxa
@@ -43,9 +40,9 @@ enche_vet espaco 1
         cargi 0
         armm e_ind
 e_laco
-        ; e_tmp = número aleatório lido
-        chama le_int
-        resto mil
+        ; e_tmp = número aleatório entre 0 e 999
+        cargi 1000
+        chama aleat
         armm e_tmp
         ; vet[e_ind] = e_tmp
         cargm e_ind
@@ -62,7 +59,6 @@ e_laco
         ret enche_vet
 e_ind   espaco 1
 e_tmp   espaco 1
-mil     valor 1000
 
 ; imp_int: imprime o valor em A na TELA
 imp_int espaco 1
@@ -89,14 +85,14 @@ i_laco
         chama imp_int
         ; i_ind++
         cargm i_ind
-        soma um
+        soma delta
         armm i_ind
         ; if i_ind < tam_vet goto i_laco
         sub tam_vet
         desvn i_laco
         ret imprime_vet
 i_ind   espaco 1
-um      valor TAM_1  ; mudar pra 1 pra imprimir o vetor inteiro
+delta   valor TAM_1  ; mudar pra 1 pra imprimir o vetor inteiro
 
 ; retorna em A um número "aleatório" entre 0 e A-1
 ; usa o código exemplificado no manual do rand do linux
@@ -176,6 +172,7 @@ o_lacoi_fim
         cargm o_trocou
         desvnz o_laco_ext
         ret ordena_vet
+um       valor  1
 o_ind    espaco 1
 o_tmp    espaco 1
 o_trocou espaco 1

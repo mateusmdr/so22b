@@ -5,14 +5,18 @@
 struct rand_t {
     int min;
     int max;
+    rel_t* rel;
+    int n_inst_ultima_leitura;
 };
 
-rand_t *rand_cria(void)
+rand_t *rand_cria(rel_t *rel)
 {
     rand_t* self = malloc(sizeof(rand_t));
     srand(time(NULL));
     self->min = 0;
     self->max = 10000;
+    self->rel = rel;
+    self->n_inst_ultima_leitura = -10; // Inicia desbloqueado
 
     return self;
 }
@@ -32,15 +36,22 @@ err_t rand_le(void *disp, int id, int *pvalor)
 {
     if(id != 0) return ERR_OP_INV;
 
-    rand_t* self = disp;
+    rand_t* self = (rand_t*)disp;
     
     // coloca a saída no endereço de memória recebido
     *pvalor = rand_inteiro(self);
 
+    // grava o horário de leitura
+    rel_le(self->rel, 1, &self->n_inst_ultima_leitura);
+
     return ERR_OK;
 }
 
-// Tem 50% de chance de estar pronto
+// Ocupado durante 10 instruções
 bool rand_pronto(void *disp, int id, acesso_t acesso) {
-    return rand() % 2 == 0;
+    rand_t* self = (rand_t*)disp;
+    int instrucoes;
+    rel_le(self->rel, 1, &instrucoes);
+
+    return instrucoes - self->n_inst_ultima_leitura >= 10;
 }

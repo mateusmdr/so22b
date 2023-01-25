@@ -38,16 +38,16 @@ contr_t *contr_cria(void)
   // cria dispositivos de E/S (o relógio e um terminal)
   self->term = term_cria();
   self->rel = rel_cria(32);
-  self->rand = rand_cria();
+  self->rand = rand_cria(self->rel);
   t_inicio();
   // cria o controlador de E/S e registra os dispositivos
   self->es = es_cria();
-  es_registra_dispositivo(self->es, 0, self->term, 0, term_le, term_escr, term_pronto);
-  es_registra_dispositivo(self->es, 1, self->term, 1, term_le, term_escr, term_pronto);
-  es_registra_dispositivo(self->es, 2, self->term, 2, term_le, term_escr, term_pronto);
-  es_registra_dispositivo(self->es, 3, self->term, 3, term_le, term_escr, term_pronto);
-  es_registra_dispositivo(self->es, 4, self->rel, 0, rel_le, NULL, NULL);
-  es_registra_dispositivo(self->es, 5, self->rand, 0, rand_le, NULL, rand_pronto);
+  for (int t=0; t<8; t++) { // Registra os 8 terminais
+    es_registra_dispositivo(self->es, t, self->term, t, term_le, term_escr, term_pronto);
+  }
+  es_registra_dispositivo(self->es, 8, self->rel, 0, rel_le, NULL, NULL);
+  es_registra_dispositivo(self->es, 9, self->rel, 1, rel_le, NULL, NULL);
+  es_registra_dispositivo(self->es, 10, self->rand, 0, rand_le, NULL, rand_pronto);
   // cria a unidade de execução e inicializa com a memória e E/S
   self->exec = exec_cria(self->mem, self->es);
   self->so = NULL;
