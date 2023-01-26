@@ -6,6 +6,10 @@
 #include <sys/queue.h>
 #include <stdio.h>
 
+#define MAX_QUANTUM 2
+#define PROGRAMA_INICIAL 1
+#define ESCALONADOR ROUND_ROBIN
+
 typedef enum {
   ROUND_ROBIN,
   SHORTEST
@@ -45,10 +49,6 @@ struct so_t {
   tab_proc_t processos;      // tabela de processos do SO
   so_metricas_t metricas;    // métricas do SO
 };
-
-#define MAX_QUANTUM 2
-#define PROGRAMA_INICIAL 1
-#define ESCALONADOR ROUND_ROBIN
 
 // funções auxiliares
 static void panico(so_t *self);
