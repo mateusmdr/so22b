@@ -48,7 +48,7 @@ struct so_t {
 
 #define MAX_QUANTUM 2
 #define PROGRAMA_INICIAL 1
-#define ESCALONADOR SHORTEST
+#define ESCALONADOR ROUND_ROBIN
 
 // funções auxiliares
 static void panico(so_t *self);
@@ -206,7 +206,7 @@ void so_int(so_t *self, err_t err)
 
   so_resolve_es(self);
   so_escalona(self);
-  
+
   cpue_muda_erro(self->cpue, ERR_OK, 0); // interrupção da cpu foi atendida
   exec_altera_estado(contr_exec(self->contr), self->cpue);
 }
@@ -268,14 +268,15 @@ static void so_escalona(so_t* self)
   proc_t* proc = (self->processos.escalonador == ROUND_ROBIN) ?
     so_encontra_first(self) :
     so_encontra_shortest(self);
+  
   int agora = rel_agora(self->rel);
-
   proc->quantum = MAX_QUANTUM;
   
   if(atual != NULL) {
     atual->metricas.preempcoes++;
     atual->metricas.hora_desbloqueio_preempcao = agora;
-    atual->metricas.duracao_ultimo_bloqueio = 0;
+    atual->metricas.foi_bloqueado = false;
+    atual->metricas.tempo_cpu += agora - atual->metricas.hora_execucao;
 
     // Salva o processo atual
     so_salva_processo(self, self->processos.atual);
@@ -324,15 +325,15 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   proc->tempo_esperado = MAX_QUANTUM;
 
   proc->metricas.hora_criacao = rel_agora(self->rel);
-  proc->metricas.duracao_ultimo_bloqueio = 0;
 
   proc->metricas.tempo_total = 0;
   proc->metricas.tempo_bloqueado = 0;
-  proc->metricas.tempo_CPU = 0;
+  proc->metricas.tempo_cpu = 0;
   proc->metricas.tempo_espera = 0;
   proc->metricas.tempo_medio_retorno = 0;
   proc->metricas.bloqueios = 0;
   proc->metricas.preempcoes = 0;
+  proc->metricas.foi_bloqueado = false;
 
   return proc;
 }
@@ -342,13 +343,10 @@ static void so_finaliza_processo(so_t *self, proc_t* proc)
 {
   if(self->processos.atual == proc) {
     self->processos.atual = NULL;
-  }else{
-    proc_list_pop(self->processos.bloqueados, proc);
-    proc_list_pop(self->processos.prontos, proc);
   }
   int agora = rel_agora(self->rel);
   proc->metricas.tempo_total = agora - proc->metricas.hora_criacao;
-  proc->metricas.tempo_CPU += agora - proc->metricas.hora_execucao;
+  proc->metricas.tempo_cpu += agora - proc->metricas.hora_execucao;
 
   so_imprime_metricas_processo(self, proc);
 
@@ -370,6 +368,7 @@ static void so_carrega_processo(so_t *self, proc_t* proc){
   // atualiza o estado do processo
   proc_list_pop(self->processos.prontos, proc);
   self->processos.atual = proc;
+
   // altera o estado da CPU para o armazenado no processo
   cpue_copia(proc->cpue, self->cpue);
   // carrega a memória do processo
@@ -377,16 +376,17 @@ static void so_carrega_processo(so_t *self, proc_t* proc){
   so_ativa_cpu(self);
 
   int agora = rel_agora(self->rel);
+  int duracao_ultima_espera = agora - proc->metricas.hora_desbloqueio_preempcao; // tempo no estado P
   proc->metricas.hora_execucao = agora;
-  proc->metricas.tempo_espera += agora - proc->metricas.hora_desbloqueio_preempcao;
-  if(proc->metricas.duracao_ultimo_bloqueio == 0) return;
+  proc->metricas.tempo_espera += duracao_ultima_espera;
 
-  int tempo_retorno = agora - proc->metricas.duracao_ultimo_bloqueio;
-  proc->metricas.duracao_ultimo_bloqueio = 0;
-  if(proc->metricas.tempo_medio_retorno == 0) {
-    proc->metricas.tempo_medio_retorno = tempo_retorno;
-  }else {
-    proc->metricas.tempo_medio_retorno = (tempo_retorno + proc->metricas.tempo_medio_retorno)/2;
+  if(proc->metricas.foi_bloqueado) { // Foi para o estado P pois estava bloqueado
+    int duracao_retorno = duracao_ultima_espera + proc->metricas.duracao_ultimo_bloqueio;
+    if(proc->metricas.tempo_medio_retorno == 0) {
+      proc->metricas.tempo_medio_retorno = duracao_retorno;
+    }else {
+      proc->metricas.tempo_medio_retorno = (proc->metricas.tempo_medio_retorno + duracao_retorno)/2;
+    }
   }
 }
 
@@ -412,7 +412,8 @@ static void so_bloqueia_processo(so_t *self) {
   }
   proc->metricas.bloqueios++;
   proc->metricas.hora_bloqueio = agora;
-  proc->metricas.tempo_CPU += agora - proc->metricas.hora_execucao;
+  proc->metricas.tempo_cpu += agora - proc->metricas.hora_execucao;
+  proc->metricas.foi_bloqueado = true;
 }
 
 // Desbloqueia um processo, alterando a tabela de processos
@@ -423,11 +424,11 @@ static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
   proc_list_push_back(self->processos.prontos, proc);
 
   int agora = rel_agora(self->rel);
-  int tempo_bloqueio = agora - proc->metricas.hora_bloqueio;
+  int duracao_bloqueio = agora - proc->metricas.hora_bloqueio;
 
-  proc->metricas.tempo_bloqueado += tempo_bloqueio;
+  proc->metricas.tempo_bloqueado += duracao_bloqueio;
   proc->metricas.hora_desbloqueio_preempcao = agora;
-  proc->metricas.duracao_ultimo_bloqueio = tempo_bloqueio;
+  proc->metricas.duracao_ultimo_bloqueio = duracao_bloqueio;
 }
 
 // Encontra e retorna o primeiro processo pronto para ser executado
@@ -458,7 +459,7 @@ static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
   fprintf(file, "Métricas do Processo PID=%d\n\n", proc->id);
   fprintf(file, "Tempo entre criação e término (unidades de tempo): ..... %d\n", metricas.tempo_total);
   fprintf(file, "Tempo total bloqueado (unidades de tempo): ............. %d\n", metricas.tempo_bloqueado);
-  fprintf(file, "Tempo total executando (unidades de tempo): ............ %d\n", metricas.tempo_CPU);
+  fprintf(file, "Tempo total executando (unidades de tempo): ............ %d\n", metricas.tempo_cpu);
   fprintf(file, "Tempo total em espera  (unidades de tempo): ............ %d\n", metricas.tempo_espera);
   fprintf(file, "Tempo médio de retorno (unidades de tempo): ............ %f\n", metricas.tempo_medio_retorno);
   fprintf(file, "Número de bloqueios: ................................... %d\n", metricas.bloqueios);

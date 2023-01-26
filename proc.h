@@ -14,16 +14,17 @@
 
 typedef struct {
     /** Variáveis auxiliares*/
-    int hora_criacao;
-    int hora_bloqueio;
-    int hora_desbloqueio_preempcao;
-    int hora_execucao;
-    int duracao_ultimo_bloqueio;
+    int hora_criacao;  // processo foi criado
+    int hora_bloqueio; // processo foi bloqueado (E -> B)
+    int hora_execucao; // processo começou a executar (P -> E)
+    int hora_desbloqueio_preempcao; // processo foi desbloqueado ou perdeu a cpu (E/B -> P)
+    int duracao_ultimo_bloqueio; // ultimo tempo (E -> B)
+    bool foi_bloqueado; // caso o processo tenha ido para o estado P a partir do estado B, na última vez que perdeu a CPU
 
     /** Métricas do processo */
     int tempo_total;
     int tempo_bloqueado;
-    int tempo_CPU;
+    int tempo_cpu;
     int tempo_espera;
     float tempo_medio_retorno;
     int bloqueios;
