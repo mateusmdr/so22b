@@ -5,7 +5,7 @@ LDLIBS = -lcurses
 OBJS = exec.o cpu_estado.o es.o mem.o rel.o term.o instr.o err.o \
 	tela.o contr.o proc.o so.o teste.o rand.o
 OBJS_MONT = instr.o err.o montador.o
-PROGRAMAS = benchmark_cpu.maq benchmark_es.maq p1.maq p2.maq \
+PROGRAMAS = benchmark_full.maq benchmark_cpu.maq benchmark_es.maq p1.maq p2.maq \
 	grande_es_t0.maq grande_es_t1.maq peq_es_t2.maq peq_es_t3.maq \
 	grande_cpu_t4.maq grande_cpu_t5.maq peq_cpu_t6.maq peq_cpu_t7.maq \
 	

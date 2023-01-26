@@ -5,50 +5,54 @@
 #include "cpu_estado.h"
 
 int progr0[] = {
-#include "programas/benchmark_es.maq"
+#include "programas/benchmark_full.maq"
 };
 
 int progr1[] = {
-#include "programas/benchmark_cpu.maq"
+#include "programas/benchmark_es.maq"
 };
 
 int progr2[] = {
-#include "programas/grande_es_t0.maq"
+#include "programas/benchmark_cpu.maq"
 };
 
 int progr3[] = {
-#include "programas/grande_es_t1.maq"
+#include "programas/grande_es_t0.maq"
 };
 
 int progr4[] = {
-#include "programas/peq_es_t2.maq"
+#include "programas/grande_es_t1.maq"
 };
 
 int progr5[] = {
-#include "programas/peq_es_t3.maq"
+#include "programas/peq_es_t2.maq"
 };
 
 int progr6[] = {
-#include "programas/grande_cpu_t4.maq"
+#include "programas/peq_es_t3.maq"
 };
 
 int progr7[] = {
-#include "programas/grande_cpu_t5.maq"
+#include "programas/grande_cpu_t4.maq"
 };
 
 int progr8[] = {
-#include "programas/peq_cpu_t6.maq"
+#include "programas/grande_cpu_t5.maq"
 };
 
 int progr9[] = {
-#include "programas/peq_cpu_t7.maq"
+#include "programas/peq_cpu_t6.maq"
 };
 
 int progr10[] = {
-#include "programas/p1.maq"
+#include "programas/peq_cpu_t7.maq"
 };
 
 int progr11[] = {
+#include "programas/p1.maq"
+};
+
+int progr12[] = {
 #include "programas/p2.maq"
 };
 
@@ -65,7 +69,8 @@ int *progrs[] = {
     progr8,
     progr9,
     progr10,
-    progr11
+    progr11,
+    progr12
 };
 int progrs_size[] = {
     sizeof(progr0),
@@ -80,6 +85,7 @@ int progrs_size[] = {
     sizeof(progr9),
     sizeof(progr10),
     sizeof(progr11),
+    sizeof(progr12)
 };
 
 proc_t* proc_cria(int id, int mem_tam) {
