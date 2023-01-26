@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <sys/queue.h>
 #include <stdio.h>
+#include <time.h>
 
-#define MAX_QUANTUM 2
-#define PROGRAMA_INICIAL 1
-#define ESCALONADOR ROUND_ROBIN
+#define PROGRAMA_INICIAL 2
+#define ESCALONADOR SHORTEST
+#define MAX_QUANTUM 16
 
 typedef enum {
   ROUND_ROBIN,
@@ -29,11 +30,13 @@ typedef struct {
 
 typedef struct {
   /**Auxiliares*/
+  time_t hora_inicio_real;
   int hora_inicio;
   int hora_bloqueio;
   int hora_desbloqueio;
 
   /**Métricas computadas*/ 
+  double tempo_total_real;
   int tempo_total;
   int tempo_cpu;
   int tempo_parado;
@@ -88,6 +91,7 @@ so_t *so_cria(contr_t *contr)
   self->metricas.tempo_total = 0;
   self->metricas.tempo_cpu = 0;
   self->metricas.tempo_parado = 0;
+  self->metricas.hora_inicio_real = time(NULL);
 
   proc_t* proc = so_cria_processo(self, PROGRAMA_INICIAL);
   so_carrega_processo(self, proc);
@@ -324,7 +328,9 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   proc->quantum = MAX_QUANTUM;
   proc->tempo_esperado = MAX_QUANTUM;
 
-  proc->metricas.hora_criacao = rel_agora(self->rel);
+  int agora = rel_agora(self->rel);
+  proc->metricas.hora_criacao = agora;
+  proc->metricas.hora_desbloqueio_preempcao = agora;
 
   proc->metricas.tempo_total = 0;
   proc->metricas.tempo_bloqueado = 0;
@@ -358,6 +364,7 @@ static void panico(so_t *self)
 {
   self->paniquei = true;
 
+  self->metricas.tempo_total_real = difftime(time(NULL), self->metricas.hora_inicio_real);
   self->metricas.tempo_total = rel_agora(self->rel) - self->metricas.hora_inicio;
   self->metricas.tempo_cpu = self->metricas.tempo_total - self->metricas.tempo_parado;
   so_imprime_metricas(self);
@@ -474,6 +481,7 @@ static void so_imprime_metricas(so_t* self) {
 
   so_metricas_t metricas = self->metricas;
   fprintf(file, "Métricas do Sistema Operacional\n\n");
+  fprintf(file, "Tempo total do sistema (segundos): ........... %lf\n", metricas.tempo_total_real);
   fprintf(file, "Tempo total do sistema (unidades de tempo):... %d\n", metricas.tempo_total);
   fprintf(file, "Tempo da CPU ativa (unidades de tempo): ...... %d\n", metricas.tempo_cpu);
   fprintf(file, "Tempo da CPU parada (unidades de tempo): ..... %d\n", metricas.tempo_parado);

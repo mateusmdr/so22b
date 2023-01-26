@@ -1,0 +1,9 @@
+Métricas do Processo PID=4
+
+Tempo entre criação e término (unidades de tempo): ..... 6241
+Tempo total bloqueado (unidades de tempo): ............. 0
+Tempo total executando (unidades de tempo): ............ 156
+Tempo total em espera  (unidades de tempo): ............ 6085
+Tempo médio de retorno (unidades de tempo): ............ 593,265625
+Número de bloqueios: ................................... 9
+Número de preempções: .................................. 0
