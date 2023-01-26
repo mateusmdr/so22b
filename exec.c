@@ -3,20 +3,20 @@
 
 #include "exec.h"
 #include "instr.h"
-// uma CPU tem estado, memória, controlador de ES
+// uma CPU tem estado, gerenciador de memória, controlador de ES
 struct exec_t {
   cpu_estado_t *estado;
-  mem_t *mem;
+  mmu_t *mmu;
   es_t *es;
 };
 
-exec_t *exec_cria(mem_t *mem, es_t *es)
+exec_t *exec_cria(mmu_t *mmu, es_t *es)
 {
   exec_t *self;
   self = malloc(sizeof(*self));
   if (self != NULL) {
     self->estado = cpue_cria();
-    self->mem = mem;
+    self->mmu = mmu;
     self->es = es;
   }
   return self;
@@ -47,7 +47,7 @@ void exec_altera_estado(exec_t *self, cpu_estado_t *estado)
 // lê um valor da memória
 static bool pega_mem(exec_t *self, int endereco, int *pval)
 {
-  err_t err = mem_le(self->mem, endereco, pval);
+  err_t err = mmu_le(self->mmu, endereco, pval);
   if (err != ERR_OK) {
     cpue_muda_erro(self->estado, err, endereco);
   }
@@ -79,7 +79,7 @@ static void incrementa_PC2(exec_t *self)
 // escreve um valor na memória
 static bool poe_mem(exec_t *self, int endereco, int val)
 {
-  err_t err = mem_escreve(self->mem, endereco, val);
+  err_t err = mmu_escreve(self->mmu, endereco, val);
   if (err != ERR_OK) {
     cpue_muda_erro(self->estado, err, endereco);
   }

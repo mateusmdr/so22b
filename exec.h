@@ -10,7 +10,7 @@
 // - estado da CPU, onde estão os registradores -- alterável pelas instruções
 
 #include "err.h"
-#include "mem.h"
+#include "mmu.h"
 #include "es.h"
 #include "cpu_estado.h"
 
@@ -19,7 +19,7 @@ typedef struct exec_t exec_t; // tipo opaco
 
 // cria uma unidade de execução com acesso à memória e ao
 //   controlador de E/S fornecidos
-exec_t *exec_cria(mem_t *mem, es_t *es);
+exec_t *exec_cria(mmu_t *mmu, es_t *es);
 // destrói a CPU
 void exec_destroi(exec_t *self);
 

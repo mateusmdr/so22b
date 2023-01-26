@@ -8,6 +8,7 @@
 #include "tela.h"
 #include "instr.h"
 #include "rand.h"
+#include "mmu.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,7 @@
 
 struct contr_t {
   mem_t *mem;
+  mmu_t *mmu;
   exec_t *exec;
   rel_t *rel;
   term_t *term;
@@ -33,8 +35,9 @@ contr_t *contr_cria(void)
 {
   contr_t *self = malloc(sizeof(*self));
   if (self == NULL) return NULL;
-  // cria a memória
+  // cria a memória e a MMU
   self->mem = mem_cria(MEM_TAM);
+  self->mmu = mmu_cria(self->mem);
   // cria dispositivos de E/S (o relógio e um terminal)
   self->term = term_cria();
   self->rel = rel_cria(16);
@@ -48,8 +51,8 @@ contr_t *contr_cria(void)
   es_registra_dispositivo(self->es, 8, self->rel, 0, rel_le, NULL, NULL);
   es_registra_dispositivo(self->es, 9, self->rel, 1, rel_le, NULL, NULL);
   es_registra_dispositivo(self->es, 10, self->rand, 0, rand_le, NULL, rand_pronto);
-  // cria a unidade de execução e inicializa com a memória e E/S
-  self->exec = exec_cria(self->mem, self->es);
+  // cria a unidade de execução e inicializa com a mmu e E/S
+  self->exec = exec_cria(self->mmu, self->es);
   self->so = NULL;
   return self;
 }
@@ -63,6 +66,7 @@ void contr_destroi(contr_t *self)
   rel_destroi(self->rel);
   t_fim();
   mem_destroi(self->mem);
+  mmu_destroi(self->mmu);
   rand_destroi(self->rand);
   free(self);
 }
@@ -75,6 +79,11 @@ void contr_informa_so(contr_t *self, so_t *so)
 mem_t *contr_mem(contr_t *self)
 {
   return self->mem;
+}
+
+mmu_t *contr_mmu(contr_t *self)
+{
+  return self->mmu;
 }
 
 rel_t *contr_rel(contr_t *self)
@@ -115,16 +124,20 @@ static void str_estado(char *txt, exec_t *exec, mem_t *mem, so_t* so)
   // pega o estado da CPU, imprime registradores, opcode, instrução
   cpu_estado_t *estado = cpue_cria();
   exec_copia_estado(exec, estado);
+  if (cpue_modo(estado) == zumbi) {
+    sprintf(txt, "zumbi");
+    return;
+  }
   int pc, opcode = -1;
   pc = cpue_PC(estado);
-  mem_le(mem, pc, &opcode);
+  mmu_le(mmu, pc, &opcode);
   sprintf(txt, "PID=%d PC=%04d A=%06d X=%06d %02d %s", so_pid(so),
                 pc, cpue_A(estado), cpue_X(estado), opcode, instr_nome(opcode));
   // imprime argumento da instrução, se houver
   if (instr_num_args(opcode) > 0) {
     char aux[40];
     int A1;
-    mem_le(mem, pc+1, &A1);
+    mmu_le(mmu, pc+1, &A1);
     sprintf(aux, " %d", A1);
     strcat(txt, aux);
   }
@@ -141,6 +154,6 @@ static void str_estado(char *txt, exec_t *exec, mem_t *mem, so_t* so)
 void contr_atualiza_estado(contr_t *self)
 {
   char s[N_COL+1];
-  str_estado(s, self->exec, self->mem, self->so);
+  str_estado(s, self->exec, self->mmu);
   t_status(s);
 }

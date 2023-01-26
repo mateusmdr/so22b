@@ -1,28 +1,62 @@
-## t2 — implementação de escalonador
+## t3 — Memória Virtual
 
-Você deve implementar 2 escalonadores de processos, e comparar seus desempenhos.
+Implemente um sistema simples de paginação.
 
-Um dos escalonadores é o escalonador **circular** (*round-robin*).
-Nesse escalonador, os processos prontos são colocador em uma fila.
-Quando há uma troca de processo, é escolhido o primeiro da fila.
-Quando o estado de um processo muda para pronto (ou quando há prempção), é colocado no final da fila.
+### Alterações na implementação em relação ao t1
 
-Quando um processo é retirado da fila (foi o escolhido para executar), recebe um *quantum*, uma certa quantidade de tempo de CPU que ele tem o direito de usar. Cada vez que o SO executa, o escalonador verifica se o processe em execução não ultrapassou seu *quantum*, e realiza a preempção (coloca o processo no final da fila e escolhe outro) se for o caso.
-O *quantum* é igual para todos, e geralmente corresponde ao tempo de algumas interrupções de relógio.
+Foram adicionados os seguintes arquivos:
+- `mmu.h` e `mmu.c` — implementação da unidade de gerenciamento de memória. Tem uma API semelhante à da memória.
+- `tab_pag.h` e `tab_tag.c` — implementa uma tabela de páginas; usada pela MMU para fazer a tradução de endereços lógicos em físicos. Deve existir uma dessas por processo, e a MMU deve receber a tabela correta a cada troca de processo.
 
-O outro escalonador é *processo mais curto*, no qual é escolhido o processo que se acha que vai executar por menos tempo, entre os processos prontos. O tempo esperado de execução de um processo é calculado cada vez que ele perde o processador, seja por bloqueio ou por preempção, como a média entre o tempo esperado anterior e o tempo de CPU recebido até a perda do processador. A preempção é feita como no circular, com um quantum. Considere o tempo esperado para um processo recém criado como sendo igual ao quantum.
+Foram alterados:
+- `err.h` — adição de dois erros relacionados à tradução de endereços
+- `exec.h` e `exec.c` — acesso à memória via MMU, não mais de forma direta
+- `contr.h` e `contr.c` — inicialização da MMU, alteração na inicialização de exec, API para permitir que o SO acesse a MMU.
 
-Você deve também computar algumas métricas do sistema. Considere como um mínimo:
-- tempo total de execução do sistema
-- tempo total de uso da CPU (é o tempo acima menos o tempo que a CPU ficou parada)
-- número de interrupções atendidas
-- para cada processo:
-  - tempo de retorno (tempo entre criação e término) OK
-  - tempo total bloqueado (tempo no estado B) OK
-  - tempo total de CPU (tempo no estado E)
-  - tempo total de espera (tempo no estado P)
-  - tempo médio de retorno (média do tempo entre sair do estado B e entrar no E)
-  - número de bloqueios
-  - número de preempções
+Foi adicionado ainda o arquivo `a1.asm`, que preenche um vetor com números aleatórios e ordena os números.
+Esse programa pode ser facilmente alterado para mudar entre um programa que usa bastante CPU e/ou E/S.
+Alterando o valor de TELA, dá para fazer ele usar outro terminal.
+Alterando a forma de obtenção dos números, dá para usar E/S em vez de CPU (trocando "`cargi 1000/chama aleat`" por uma chamada a uma função similar a `le_int` que lê do gerador de números de t0).
+Comentando as chamadas a `imprime_vet`, dá para reduzir a E/S.
+Comentando a chamada a `ordena_vet`, dá para reduzir a CPU.
 
-Você deve executar o sistema em 4 configurações diferentes (cada escalonador, com quantum grande e pequeno), para dois conjuntos de programas (que serão fornecidos), e coletar as métricas.
+Foi alterado também `so.c`, para executar `a1.maq` e `tela.c` para aumentar o tamanho das filas de E/S.
+
+### Parte I
+
+Altere a sua implementação de processos para manter todos os processos na memória ao mesmo tempo. 
+A MMU será usada para proteção de memória e relocação, mas ainda não para memória virtual com uso de área de troca.
+
+Defina a memória principal com tamanho suficiente para conter todos os processos que serão executados.
+O tamanho das páginas (e dos quadros) não é especialmente importante, mas deve ser levado em consideração que uma página não pode ser usada por mais de um processo por vez.
+Na criação de um processo, coloque todo o conteúdo dele em uma região livre da memória principal.
+A alocação da memória principal deve ser feita em quadros.
+Crie e inicialize uma tabela de páginas para o processo.
+A página 0 do processo deve corresponder ao primeiro quadro usado para esse processo, a página 1 ao segundo etc.
+Quando houver troca de processo, altere a tabela a ser usada pela MMU para a tabela do processo que irá executar, não altere a memória.
+
+### Parte II
+
+Foram alterados `mmu.h` e `mmu.c` para incluir a função `mmu_ultimo_endereco`, que o SO pode usar para obter o endereço que causou falha de página.
+
+Implemente memória virtual com tratamento de faltas de página e paginação por demanda.
+Reduza o tamanho da memória principal para ser bem menor que o necessário para conter todos os processos.
+Por simplicidade, a memória secundária de cada processo vai ser mantida pelo SO na entrada do processo na tabela de processos. Essa memória é inicializada na criação do processo.
+
+Na criação do processo, é criada a tabela de páginas do processo, com todas as páginas marcadas como inválidas, nenhuma delas é colocada na memória principal. As páginas serão colocadas em quadros da memória principal em resposta a interrupções de falta de página causadas pela execução do processo.
+
+Você deve implementar 2 algoritmos de substituição de páginas, e realizar medições para comparar o desempenho do sistema em 4 configurações (cada algoritmo em uma situação folgada (metade da memória necessária) ou apertada (menos de 1/5 da memória)).
+
+### Atualizações
+
+23jan:
+- corrigido um bug em tab_pag.c (tava invertido o teste de página válida) (obrigado Zucchi).
+- acrescentados 4 programas .asm (pequeno e grande, limitado por CPU e limitado por E/S), alterações de a1.asm.
+
+24jan:
+- mmu agora seta os bits de acessada e alterada na tabela de páginas; alterou um pouco a API da tab_pag (obrigado não lembro quem)
+- correção nos programas .asm de ontem (tinha um bug, e tavam demorando demais)
+
+25jan (contr.c):
+- não tenta acessar os dados da CPU se estiver em modo zumbi (obrigado Gilson)
+- acessa memória usando a mmu, para imprimir a instrução corrente
