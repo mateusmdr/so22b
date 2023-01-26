@@ -9,7 +9,9 @@ static char *nomes[N_ERR] = {
   [ERR_INSTR_PRIV] = "Instrução privilegiada",
   [ERR_INSTR_INV]  = "Instrução inválida",
   [ERR_SISOP]      = "Chamada de sistema",
-  [ERR_TIC]        = "Interrupção de relógio"
+  [ERR_TIC]        = "Interrupção de relógio",
+  [ERR_PAGINV]     = "Página inválida",
+  [ERR_FALPAG]     = "Falha de página"
 };
 
 // retorna o nome de erro

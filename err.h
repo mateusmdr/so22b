@@ -12,7 +12,9 @@ typedef enum {
   ERR_INSTR_INV,     // instrução inválida
   ERR_TIC,           // interrupção do relógio
   ERR_SISOP,         // chamada de sistema
-  N_ERR              // número de erros
+  ERR_PAGINV,        // página inválida
+  ERR_FALPAG,        // falha de página
+  N_ERR,             // número de erros
 } err_t;
 // retorna o nome de erro
 char *err_nome(err_t err);
