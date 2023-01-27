@@ -47,7 +47,6 @@ typedef struct {
 struct so_t {
   contr_t *contr;            // o controlador do hardware
   bool paniquei;             // apareceu alguma situação intratávele
-  cpu_estado_t *cpue;        // cópia do estado da CPU
   rel_t *rel;                // referência do relógio do controlador
   tab_proc_t processos;      // tabela de processos do SO
   so_metricas_t metricas;    // métricas do SO
@@ -61,30 +60,23 @@ static void so_bloqueia_processo(so_t *self);
 static void so_desbloqueia_processo(so_t *self, proc_t* proc);
 static proc_t* so_encontra_first(so_t *self);
 static proc_t* so_encontra_shortest(so_t *self);
-static void so_carrega_processo(so_t *self, proc_t* proc);
-static void so_salva_processo(so_t *self, proc_t* proc);
-static void so_resolve_es(so_t* self);
-static void so_escalona(so_t* self);
-static void so_ativa_cpu(so_t* self);
-static void so_desativa_cpu(so_t* self);
+static void so_despacha(so_t *self, proc_t* proc);
+static void so_salva_processo(so_t *self);
+static bool so_resolve_es(so_t* self, proc_t* proc);
+static proc_t* so_escalona(so_t* self);
 static void so_imprime_metricas(so_t* self);
 static void so_imprime_metricas_processo(so_t* self, proc_t* proc);
+static void so_verifica_bloqueados(so_t* self);
 
-so_t *so_cria(contr_t *contr)
-{
-  so_t *self = malloc(sizeof(*self));
-  if (self == NULL) return NULL;
-  self->contr = contr;
-  self->paniquei = false;
-  self->cpue = cpue_cria();
-  self->rel = contr_rel(self->contr);
-  /**Cria tabela de processos*/
+static void so_cria_tab_proc(so_t* self) {
   self->processos.bloqueados = proc_list_cria();
   self->processos.prontos = proc_list_cria();
   self->processos.atual = NULL;
   self->processos.max_pid = 0;
   self->processos.escalonador = ESCALONADOR;
-  /**Inicializa métricas do sistema*/
+}
+
+static void so_inicializa_metricas(so_t* self) {
   self->metricas.hora_inicio = rel_agora(self->rel);
   self->metricas.interrupcoes = 0;
   self->metricas.sisops = 0;
@@ -92,16 +84,26 @@ so_t *so_cria(contr_t *contr)
   self->metricas.tempo_cpu = 0;
   self->metricas.tempo_parado = 0;
   self->metricas.hora_inicio_real = time(NULL);
+}
 
-  proc_t* proc = so_cria_processo(self, PROGRAMA_INICIAL);
-  so_carrega_processo(self, proc);
+so_t *so_cria(contr_t *contr)
+{
+  so_t *self = malloc(sizeof(*self));
+  if (self == NULL) return NULL;
+  self->contr = contr;
+  self->paniquei = false;
+  self->rel = contr_rel(self->contr);
+  
+  so_cria_tab_proc(self);
+  so_inicializa_metricas(self);
+
+  so_despacha(self, so_cria_processo(self, PROGRAMA_INICIAL));
 
   return self;
 }
 
 void so_destroi(so_t *self)
 {
-  cpue_destroi(self->cpue);
   proc_list_destroi(self->processos.bloqueados);
   proc_list_destroi(self->processos.prontos);
   free(self);
@@ -122,21 +124,21 @@ int so_pid(so_t* self) {
 // atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_le(so_t *self)
 {
-  proc_t* atual = self->processos.atual;
-  atual->disp = cpue_A(self->cpue);
-  atual->acesso = leitura;
-  so_bloqueia_processo(self);
+  proc_t* proc = self->processos.atual;
+  proc->disp = cpue_A(proc->cpue);
+  proc->acesso = leitura;
+  if(!so_resolve_es(self, proc)) so_bloqueia_processo(self);
 }
 
 // chamada de sistema para escrita de E/S, marca o processo
 // atual como bloqueado com informações sobre a solicitação
 static void so_trata_sisop_escr(so_t *self)
 {
-  proc_t* atual = self->processos.atual;
-  atual->disp = cpue_A(self->cpue);
-  atual->acesso = escrita;
+  proc_t* proc = self->processos.atual;
+  proc->disp = cpue_A(proc->cpue);
+  proc->acesso = escrita;
   
-  so_bloqueia_processo(self);
+  if(!so_resolve_es(self, proc)) so_bloqueia_processo(self);
 }
 
 // chamada de sistema para término do processo
@@ -150,19 +152,18 @@ static void so_trata_sisop_fim(so_t *self)
 // chamada de sistema para criação de processo
 static void so_trata_sisop_cria(so_t *self)
 {
-  int prog = cpue_A(self->cpue);
+  proc_t* proc = self->processos.atual;
+  int prog = cpue_A(proc->cpue);
   so_cria_processo(self, prog);
   // incrementa o PC
-  cpue_muda_PC(self->cpue, cpue_PC(self->cpue)+2);
-  // interrupção da cpu foi atendida
-  cpue_muda_erro(self->cpue, ERR_OK, 0);
+  cpue_muda_PC(proc->cpue, cpue_PC(proc->cpue)+2);
 }
 
 // trata uma interrupção de chamada de sistema
 static void so_trata_sisop(so_t *self)
 {
   self->metricas.sisops++;
-  so_chamada_t chamada = cpue_complemento(self->cpue);
+  so_chamada_t chamada = cpue_complemento(self->processos.atual->cpue);
   switch (chamada) {
     case SO_LE:
       so_trata_sisop_le(self);
@@ -194,7 +195,9 @@ static void so_trata_tic(so_t *self)
 void so_int(so_t *self, err_t err)
 {
   self->metricas.interrupcoes++;
-  exec_copia_estado(contr_exec(self->contr), self->cpue);
+  proc_t* proc = self->processos.atual;
+
+  if(proc != NULL) so_salva_processo(self);
 
   switch (err) {
     case ERR_SISOP:
@@ -204,43 +207,47 @@ void so_int(so_t *self, err_t err)
       so_trata_tic(self);
       break;
     default:
-      t_printf("SO: interrupção não tratada [%s] feita pelo processo %d", err_nome(err), self->processos.atual->id);
-      so_finaliza_processo(self, self->processos.atual);
+      t_printf("SO: interrupção não tratada [%s] feita pelo processo %d", err_nome(err), proc->id);
+      so_finaliza_processo(self, proc);
   }
 
-  so_resolve_es(self);
-  so_escalona(self);
+  so_verifica_bloqueados(self);
+  proc = so_escalona(self);
 
-  cpue_muda_erro(self->cpue, ERR_OK, 0); // interrupção da cpu foi atendida
-  exec_altera_estado(contr_exec(self->contr), self->cpue);
+  so_despacha(self, proc);
 }
 
-/**Percorre todos os processos bloqueados
- * e verifica os dispositivos de E/S estão
- * prontos, resolvendo a solicitação
+/**
+ * Resolve a E/S de um processo, retornando false caso o disp não esteja pronto
 */
-static void so_resolve_es(so_t* self)
+static bool so_resolve_es(so_t* self, proc_t* proc) {
+  if(!es_pronto(contr_es(self->contr), proc->disp, proc->acesso)) return false;
+
+  int val = cpue_X(proc->cpue);
+  err_t err;
+  if(proc->acesso == leitura) {
+    err = es_le(contr_es(self->contr), proc->disp, &val);
+  }else {
+    err = es_escreve(contr_es(self->contr), proc->disp, val);
+  }
+
+  cpue_muda_A(proc->cpue, err);
+  cpue_muda_X(proc->cpue, val); // muda registrador X, no caso da leitura
+  cpue_muda_PC(proc->cpue, cpue_PC(proc->cpue)+2); // incrementa o PC
+
+  return true;
+}
+
+/**
+ * Percorre todos os processos bloqueados
+ * e verifica o que deve ser feito
+*/
+static void so_verifica_bloqueados(so_t* self)
 {
   proc_t* el;
 
   STAILQ_FOREACH(el, self->processos.bloqueados, entries){
-    int val = cpue_X(el->cpue);
-    err_t err;
-    if(!es_pronto(contr_es(self->contr), el->disp, el->acesso)) continue;
-    t_printf("Dispositivo %d liberado para o processo %d", el->disp, el->id);
-    if(el->acesso == leitura) {
-      err = es_le(contr_es(self->contr), el->disp, &val);
-    }else {
-      err = es_escreve(contr_es(self->contr), el->disp, val);
-    }
-
-    cpue_muda_A(el->cpue, err);
-    if (err == ERR_OK) {
-      cpue_muda_X(el->cpue, val); // muda registrador X, no caso da leitura
-      cpue_muda_PC(el->cpue, cpue_PC(el->cpue)+2); // incrementa o PC
-    }
-
-    so_desbloqueia_processo(self, el);
+    if(so_resolve_es(self, el)) so_desbloqueia_processo(self, el);
   }
 }
 
@@ -248,25 +255,22 @@ static void so_resolve_es(so_t* self)
  * Decide qual será o processo a ser executado
  * e termina o SO caso não haja nenhum
 */
-static void so_escalona(so_t* self)
+static proc_t* so_escalona(so_t* self)
 {
-  bool nenhumPronto = STAILQ_EMPTY(self->processos.prontos);
-  bool nenhumBloqueado = STAILQ_EMPTY(self->processos.bloqueados);
   proc_t* atual = self->processos.atual;
+  bool nenhumPronto = proc_list_empty(self->processos.prontos);
+  bool nenhumBloqueado = proc_list_empty(self->processos.bloqueados);
 
   if(nenhumPronto && nenhumBloqueado && atual == NULL) {
     t_printf("SO: Nenhum processo disponível para o escalonador");
     panico(self);
-    return;
+    return false;
   }
 
-  // Todos os processos estão bloqueados, coloca em modo zumbi
-  if(atual == NULL && nenhumPronto) {
-    so_desativa_cpu(self);
-    return;
+  // Continua executando o processo atual
+  if(nenhumPronto || (atual != NULL && atual->quantum >= 0)) {
+    return atual;
   }
-
-  if(atual != NULL && (nenhumPronto || atual->quantum >= 0)) return; // Continua executando o processo atual
 
   // Preempção
   proc_t* proc = (self->processos.escalonador == ROUND_ROBIN) ?
@@ -282,10 +286,6 @@ static void so_escalona(so_t* self)
     atual->metricas.foi_bloqueado = false;
     atual->metricas.tempo_cpu += agora - atual->metricas.hora_execucao;
 
-    // Salva o processo atual
-    so_salva_processo(self, self->processos.atual);
-    proc_list_push_back(self->processos.prontos, self->processos.atual);
-
     if(self->processos.escalonador == SHORTEST) {
       // Calcula o tempo esperado do processo que foi colocado em preempção
       int ultimo_tempo = agora - atual->metricas.hora_execucao;
@@ -293,18 +293,7 @@ static void so_escalona(so_t* self)
     }
   }
 
-  so_carrega_processo(self, proc);
-}
-
-static void so_ativa_cpu(so_t* self) {
-  if(cpue_modo(self->cpue) != usuario) {
-    cpue_muda_modo(self->cpue, usuario);
-    self->metricas.tempo_parado += rel_agora(self->rel) - self->metricas.hora_bloqueio;
-  }
-}
-static void so_desativa_cpu(so_t* self) {
-  cpue_muda_modo(self->cpue, zumbi);
-  self->metricas.hora_bloqueio = rel_agora(self->rel);
+  return proc;
 }
 
 /** Cria um processo e o inicializa com o programa desejado */
@@ -370,36 +359,61 @@ static void panico(so_t *self)
   so_imprime_metricas(self);
 }
 
-// Carrega um processo e o coloca em execução
-static void so_carrega_processo(so_t *self, proc_t* proc){
-  // atualiza o estado do processo
-  proc_list_pop(self->processos.prontos, proc);
-  self->processos.atual = proc;
+static void so_despacha(so_t *self, proc_t* proc){
+  proc_t* atual = self->processos.atual;
 
-  // altera o estado da CPU para o armazenado no processo
-  cpue_copia(proc->cpue, self->cpue);
-  // carrega a memória do processo
-  mem_copia(proc->mem, contr_mem(self->contr));
-  so_ativa_cpu(self);
+  if(proc == atual) return; // Continua executando o mesmo processo (ou nenhum)
 
-  int agora = rel_agora(self->rel);
-  int duracao_ultima_espera = agora - proc->metricas.hora_desbloqueio_preempcao; // tempo no estado P
-  proc->metricas.hora_execucao = agora;
-  proc->metricas.tempo_espera += duracao_ultima_espera;
+  if(atual != NULL) cpue_muda_erro(atual->cpue, ERR_OK, 0); // interrupção da cpu foi atendida
 
-  if(proc->metricas.foi_bloqueado) { // Foi para o estado P pois estava bloqueado
-    int duracao_retorno = duracao_ultima_espera + proc->metricas.duracao_ultimo_bloqueio;
-    if(proc->metricas.tempo_medio_retorno == 0) {
-      proc->metricas.tempo_medio_retorno = duracao_retorno;
-    }else {
-      proc->metricas.tempo_medio_retorno = (proc->metricas.tempo_medio_retorno + duracao_retorno)/2;
+  cpu_estado_t* cpue = cpue_cria();
+  exec_t* exec = contr_exec(self->contr);
+  exec_copia_estado(exec, cpue);
+
+  if(proc == NULL) { // Coloca a CPU em modo zumbi
+    if(cpue_modo(cpue) != zumbi){
+      self->metricas.hora_bloqueio = rel_agora(self->rel);
+      cpue_muda_modo(cpue, zumbi);
+      exec_altera_estado(exec,cpue);
     }
-  }
+  }else { // troca o processo atual por outro
+    so_salva_processo(self);
+
+    // muda o estado do processo atual
+    proc_list_pop(self->processos.prontos, proc);
+    self->processos.atual = proc;
+
+    if(cpue_modo(cpue) != usuario){
+      self->metricas.tempo_parado += rel_agora(self->rel) - self->metricas.hora_bloqueio;
+    }
+
+    // altera o estado da CPU para o armazenado no processo
+    exec_copia_estado(contr_exec(self->contr), proc->cpue);
+    // carrega a memória do processo
+    mem_copia(proc->mem, contr_mem(self->contr));
+
+    int agora = rel_agora(self->rel);
+    int duracao_ultima_espera = agora - proc->metricas.hora_desbloqueio_preempcao; // tempo no estado P
+    proc->metricas.hora_execucao = agora;
+    proc->metricas.tempo_espera += duracao_ultima_espera;
+
+    if(proc->metricas.foi_bloqueado) { // Foi para o estado P pois estava bloqueado
+      int duracao_retorno = duracao_ultima_espera + proc->metricas.duracao_ultimo_bloqueio;
+      if(proc->metricas.tempo_medio_retorno == 0) {
+        proc->metricas.tempo_medio_retorno = duracao_retorno;
+      }else {
+        proc->metricas.tempo_medio_retorno = (proc->metricas.tempo_medio_retorno + duracao_retorno)/2;
+      }
+    }
+  }  
+
+  cpue_destroi(cpue);
 }
 
-// Salva o estado de um processo
-static void so_salva_processo(so_t *self, proc_t* proc){
-  cpue_copia(self->cpue, proc->cpue);
+// Salva o estado do processo atual
+static void so_salva_processo(so_t *self){
+  proc_t* proc = self->processos.atual;
+  exec_copia_estado(contr_exec(self->contr), proc->cpue);
   mem_copia(contr_mem(self->contr), proc->mem);
 }
 
@@ -409,7 +423,7 @@ static void so_bloqueia_processo(so_t *self) {
   int agora = rel_agora(self->rel);
   self->processos.atual = NULL;
 
-  so_salva_processo(self, proc);
+  so_salva_processo(self);
   proc_list_push_front(self->processos.bloqueados, proc);
 
   if(self->processos.escalonador == SHORTEST) {

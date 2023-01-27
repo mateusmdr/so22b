@@ -98,6 +98,7 @@ proc_t* proc_cria(int id, int mem_tam) {
             return NULL;
         }
         proc->cpue = cpue_cria();
+        cpue_muda_modo(proc->cpue, usuario);
         proc->id = id;
     }
 
@@ -153,4 +154,8 @@ void proc_list_push_back(proc_list_t* self, proc_t* el) {
 
 void proc_list_pop(proc_list_t* self, proc_t* el) {
     STAILQ_REMOVE(self, el, proc_t, entries);
+}
+
+bool proc_list_empty(proc_list_t* self) {
+    return STAILQ_EMPTY(self);
 }

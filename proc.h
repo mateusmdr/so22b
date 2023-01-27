@@ -38,7 +38,8 @@ typedef struct proc_t {
     mem_t* mem;               // Memória Principal
     int disp;                 // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso;          // Tipo de acesso (caso bloqueado por e/s)
-    // Valores utilizados pelos escalonadores
+    
+    /** Valores utilizados pelos escalonadores */
     int quantum;
     float tempo_esperado;
 
@@ -72,5 +73,8 @@ void proc_list_push_back(proc_list_t* self, proc_t* el);
 
 // remove um processo da lista
 void proc_list_pop(proc_list_t* self, proc_t* el);
+
+// verdadeiro se a lista está vazia
+bool proc_list_empty(proc_list_t* self);
 
 #endif
