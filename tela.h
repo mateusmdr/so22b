@@ -12,7 +12,7 @@
 
 #include <stdbool.h>
 
-#define N_LIN 24  // número de linhas na tela
+#define N_LIN 30  // número de linhas na tela
 #define N_COL 80  // número de colunas na tela
 #define N_TERM 8  // número de terminais, cada um ocupa 2 linhas na tela
 

@@ -284,7 +284,7 @@ static void desenha_console(void)
 {
   attron(COLOR_PAIR(3));
   for (int l=0; l<N_LIN_CONS; l++) {
-    int y = 23 - N_LIN_CONS + l;
+    int y = N_LIN - 1 - N_LIN_CONS + l;
     mvprintw(y, 0, "%-*s", N_COL, tela.txt_console[l]);
   }
   attroff(COLOR_PAIR(3));
@@ -293,9 +293,9 @@ static void desenha_console(void)
 static void desenha_entrada(void)
 {
   attron(COLOR_PAIR(4));
-  mvprintw(23, 0, "%*s", N_COL, 
+  mvprintw(N_LIN-1, 0, "%*s", N_COL, 
            "P=para C=continua S=passo Lt=lê Zt=zera Etn=entra");
-  mvprintw(23, 0, "%s", tela.digitando);
+  mvprintw(N_LIN-1, 0, "%s", tela.digitando);
   attroff(COLOR_PAIR(4));
 }
 
@@ -315,4 +315,3 @@ void t_atualiza(void)
     refresh();
   } while (tela.modo == nao_sai_da_console);
 }
-
