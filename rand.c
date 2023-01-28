@@ -42,16 +42,16 @@ err_t rand_le(void *disp, int id, int *pvalor)
     *pvalor = rand_inteiro(self);
 
     // grava o horário de leitura
-    rel_le(self->rel, 1, &self->n_inst_ultima_leitura);
+    rel_le(self->rel, 0, &self->n_inst_ultima_leitura);
 
     return ERR_OK;
 }
 
-// Ocupado durante 10 instruções
+// Ocupado durante 10 instrucoes
 bool rand_pronto(void *disp, int id, acesso_t acesso) {
     rand_t* self = (rand_t*)disp;
     int instrucoes;
-    rel_le(self->rel, 1, &instrucoes);
+    rel_le(self->rel, 0, &instrucoes);
 
     return instrucoes - self->n_inst_ultima_leitura >= 10;
 }

@@ -91,16 +91,18 @@ int progrs_size[] = {
 proc_t* proc_cria(int id, int mem_tam) {
     proc_t* proc = (proc_t*) malloc(sizeof(proc_t));
 
-    if (proc != NULL){
-        proc->mem = mem_cria(mem_tam);
-        if(proc->mem == NULL) {
-            free(proc);
-            return NULL;
-        }
-        proc->cpue = cpue_cria();
-        cpue_muda_modo(proc->cpue, usuario);
-        proc->id = id;
+    if (proc == NULL) return NULL;
+
+    proc->mem = mem_cria(mem_tam);
+    if(proc->mem == NULL) {
+        free(proc);
+        return NULL;
     }
+    proc->cpue = cpue_cria();
+    cpue_muda_modo(proc->cpue, usuario);
+    proc->id = id;
+    proc->prog = -1;
+    
 
     return proc;
 }
@@ -124,7 +126,8 @@ bool proc_inicializa(proc_t* proc, int prog_id) {
             return false;
         }
     }
-
+    proc->prog = prog_id;
+    
     return true;
 }
 

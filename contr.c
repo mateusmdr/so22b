@@ -100,7 +100,7 @@ void contr_laco(contr_t *self)
     err = exec_executa_1(self->exec);
     if (err != ERR_OK) so_int(self->so, err);
     err = rel_tictac(self->rel);
-    if (err != ERR_OK) so_int(self->so, err);
+    if (err != ERR_OK && so_ok(self->so)) so_int(self->so, err);
     contr_atualiza_estado(self);
     t_atualiza();
   } while (so_ok(self->so));
