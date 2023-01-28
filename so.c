@@ -2,6 +2,8 @@
 #include "tela.h"
 #include "proc.h"
 #include "rel.h"
+#include "so_mem.h"
+#include "progr.h"
 #include <stdlib.h>
 #include <sys/queue.h>
 #include <stdio.h>
@@ -46,10 +48,11 @@ typedef struct {
 
 struct so_t {
   contr_t *contr;            // o controlador do hardware
-  bool paniquei;             // apareceu alguma situação intratávele
+  bool paniquei;             // apareceu alguma situação intratável
   rel_t *rel;                // referência do relógio do controlador
   tab_proc_t processos;      // tabela de processos do SO
   so_metricas_t metricas;    // métricas do SO
+  so_mem_t* so_mem;          // gerenciador de memória do SO
 };
 
 // funções auxiliares
@@ -92,6 +95,7 @@ so_t *so_cria(contr_t *contr)
   self->contr = contr;
   self->paniquei = false;
   self->rel = contr_rel(self->contr);
+  self->so_mem = so_mem_cria();
   
   so_cria_tab_proc(self);
   so_inicializa_metricas(self);
@@ -198,7 +202,6 @@ void so_int(so_t *self, err_t err)
 
   if(proc != NULL) { // Salva o estado do processo atual
     exec_copia_estado(contr_exec(self->contr), proc->cpue);
-    mem_copia(contr_mem(self->contr), proc->mem);
   }
 
   switch (err) {
@@ -301,20 +304,39 @@ static proc_t* so_escalona(so_t* self)
 /** Cria um processo e o inicializa com o programa desejado */
 static proc_t* so_cria_processo(so_t *self, int prog)
 {
-  proc_t* proc = proc_cria(self->processos.max_pid, mem_tam(contr_mem(self->contr)));
-  if(proc == NULL) return proc;
+  proc_t* proc = proc_cria(self->processos.max_pid);
+
+  if(proc == NULL || prog > sizeof(PROGRS)/4-1 || prog < 0) {
+    t_printf("Falha na criação do processo %d", proc->id);
+    panico(self);
+    return proc;
+  }
 
   proc_list_push_front(self->processos.prontos, proc);
   self->processos.max_pid++;
 
   t_printf("Processo %d criado", proc->id);
 
-  if(!proc_inicializa(proc, prog)) {
-    so_finaliza_processo(self, proc);
-    t_printf("Falha na inicialização do processo %d", proc->id);
-  }else {
-    t_printf("Processo %d inicializado com o programa %d", proc->id, prog);
+  int* progr = PROGRS[prog];
+  int tam_progr = PROGRS_SIZE[prog]/sizeof(progr[0]);
+
+  int quadro = so_mem_encontra_livre(self->so_mem);
+  proc->prog = prog;
+
+  t_printf("Processo %d usando quadro %d", proc->id, quadro);
+  int offset = quadro * QUADRO_TAM;
+  for (int i = 0; i < tam_progr; i++) {
+    if (mem_escreve(contr_mem(self->contr), offset + i, progr[i]) != ERR_OK) {
+      t_printf("Falha na inicialização do processo %d", proc->id);
+      panico(self);
+      return proc;
+    }
   }
+  
+  so_mem_ocupa(self->so_mem, quadro);
+  proc->tab_pag = tab_pag_cria(1, QUADRO_TAM);
+  tab_pag_muda_quadro(proc->tab_pag, 0, quadro);
+  tab_pag_muda_valida(proc->tab_pag, 0, true);
 
   proc->quantum = MAX_QUANTUM;
   proc->tempo_esperado = MAX_QUANTUM;
@@ -407,8 +429,8 @@ static void so_despacha(so_t *self, proc_t* proc){
     }
     // altera o estado da CPU para o armazenado no processo
     exec_altera_estado(contr_exec(self->contr), proc->cpue);
-    // carrega a memória do processo
-    mem_copia(proc->mem, contr_mem(self->contr));
+    // altera a tabela de páginas da MMU
+    mmu_usa_tab_pag(contr_mmu(self->contr), proc->tab_pag);
   }
 
   cpue_destroi(cpue);

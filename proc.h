@@ -7,6 +7,7 @@
 #include "cpu_estado.h"
 #include "mem.h"
 #include "es.h"
+#include "tab_pag.h"
 
 // Processo
 // Define a estrutura de um processo gerenciado pelo SO
@@ -35,13 +36,14 @@ typedef struct proc_t {
     int id;
     int prog;
     cpu_estado_t* cpue;       // Estado da CPU do processo
-    mem_t* mem;               // Memória Principal
     int disp;                 // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso;          // Tipo de acesso (caso bloqueado por e/s)
     
     /** Valores utilizados pelos escalonadores */
     int quantum;
     float tempo_esperado;
+
+    tab_pag_t* tab_pag;       // Tabela de páginas do processo
 
     proc_metricas_t metricas; // Métricas do processo
 
@@ -51,13 +53,10 @@ typedef struct proc_t {
 typedef STAILQ_HEAD(proc_list_t, proc_t) proc_list_t;
 
 // aloca um processo
-proc_t* proc_cria(int id, int mem_tam);
+proc_t* proc_cria(int id);
 
 // desaloca um processo
 void proc_destroi(proc_t* proc);
-
-// inicializa a memória de um processo com um programa (falso caso falhe)
-bool proc_inicializa(proc_t* proc, int prog_id);
 
 // inicializa uma lista de processos
 proc_list_t* proc_list_cria();
