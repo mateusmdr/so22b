@@ -61,7 +61,6 @@ static void so_desbloqueia_processo(so_t *self, proc_t* proc);
 static proc_t* so_encontra_first(so_t *self);
 static proc_t* so_encontra_shortest(so_t *self);
 static void so_despacha(so_t *self, proc_t* proc);
-static void so_salva_processo(so_t *self, proc_t* proc);
 static bool so_resolve_es(so_t* self, proc_t* proc);
 static proc_t* so_escalona(so_t* self);
 static void so_imprime_metricas(so_t* self);
@@ -126,7 +125,6 @@ static void so_trata_sisop_le(so_t *self)
 {
   proc_t* proc = self->processos.atual;
   proc->disp = cpue_A(proc->cpue);
-  t_printf("LEITURA DISPOSITIVO: %d, pid=%d prog=%d PC=%d",proc->disp,proc->id,proc->prog, cpue_PC(proc->cpue));
   proc->acesso = leitura;
   if(!so_resolve_es(self, proc)) so_bloqueia_processo(self);
 }
@@ -137,7 +135,6 @@ static void so_trata_sisop_escr(so_t *self)
 {
   proc_t* proc = self->processos.atual;
   proc->disp = cpue_A(proc->cpue);
-  t_printf("ESCRITA DISPOSITIVO: %d", proc->disp);
   proc->acesso = escrita;
   
   if(!so_resolve_es(self, proc)) so_bloqueia_processo(self);
@@ -146,9 +143,9 @@ static void so_trata_sisop_escr(so_t *self)
 // chamada de sistema para término do processo
 static void so_trata_sisop_fim(so_t *self)
 {
-  // int pid = self->processos.atual->id;
+  int pid = self->processos.atual->id;
   so_finaliza_processo(self, self->processos.atual);
-  // t_printf("Processo %d finalizado", pid);
+  t_printf("Processo %d finalizado", pid);
 }
 
 // chamada de sistema para criação de processo
@@ -199,7 +196,10 @@ void so_int(so_t *self, err_t err)
   self->metricas.interrupcoes++;
   proc_t* proc = self->processos.atual;
 
-  if(proc != NULL) so_salva_processo(self, proc);
+  if(proc != NULL) { // Salva o estado do processo atual
+    exec_copia_estado(contr_exec(self->contr), proc->cpue);
+    mem_copia(contr_mem(self->contr), proc->mem);
+  }
 
   switch (err) {
     case ERR_SISOP:
@@ -223,7 +223,6 @@ void so_int(so_t *self, err_t err)
  * Resolve a E/S de um processo, retornando false caso o disp não esteja pronto
 */
 static bool so_resolve_es(so_t* self, proc_t* proc) {
-  // t_printf("Tentando resolver ES, PID=%d, DISP=%d, ACESSO=%d", proc->id, proc->disp, proc->acesso);
   if(!es_pronto(contr_es(self->contr), proc->disp, proc->acesso)) return false;
 
   int val = cpue_X(proc->cpue);
@@ -384,7 +383,6 @@ static void so_despacha(so_t *self, proc_t* proc){
     if(proc != atual) { // troca o processo atual por outro
       // muda o estado do processo atual
       if(atual != NULL) {
-        so_salva_processo(self, atual);
         proc_list_push_back(self->processos.prontos, atual);
       }
       proc_list_pop(self->processos.prontos, proc);
@@ -416,12 +414,6 @@ static void so_despacha(so_t *self, proc_t* proc){
   cpue_destroi(cpue);
 }
 
-// Salva o estado do processo atual
-static void so_salva_processo(so_t *self, proc_t* proc){
-  exec_copia_estado(contr_exec(self->contr), proc->cpue);
-  mem_copia(contr_mem(self->contr), proc->mem);
-}
-
 // Bloqueia o processo atual, alterando a tabela de processos
 static void so_bloqueia_processo(so_t *self) {
   proc_t* proc = self->processos.atual;
@@ -444,7 +436,6 @@ static void so_bloqueia_processo(so_t *self) {
 // Desbloqueia um processo, alterando a tabela de processos
 static void so_desbloqueia_processo(so_t *self, proc_t* proc) {
   proc_list_pop(self->processos.bloqueados, proc);
-  t_printf("Desbloqueado %d", proc->id);
 
   // coloca o processo no final da lista
   proc_list_push_back(self->processos.prontos, proc);
