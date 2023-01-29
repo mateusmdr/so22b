@@ -11,12 +11,18 @@
 
 #define PROGRAMA_INICIAL 0
 #define ESCALONADOR ROUND_ROBIN
-#define MAX_QUANTUM 2
+#define MAX_QUANTUM 16
+#define ALG_PAG FIFO
 
 typedef enum {
   ROUND_ROBIN,
   SHORTEST
 } escalonador_t;
+
+typedef enum {
+  ALEATORIO,       // Escolhe uma página qualquer (péssimo)
+  FIFO             // Escolhe a página mais antiga
+} alg_pag_t;
 
 /**
  * Tabela de processos do SO
@@ -27,7 +33,6 @@ typedef struct {
   proc_list_t* prontos;
   proc_t* atual;          // processo atual em execução (NULL caso nenhum)
   int max_pid;            // último id de processo gerado
-  escalonador_t escalonador; // tipo de escalonador a ser utilizado
 } tab_proc_t;
 
 typedef struct {
@@ -53,6 +58,8 @@ struct so_t {
   tab_proc_t processos;      // tabela de processos do SO
   so_metricas_t metricas;    // métricas do SO
   so_mem_t* so_mem;          // gerenciador de memória do SO
+  alg_pag_t alg_pag;         // algoritmo de substituição de páginas do SO
+  escalonador_t escalonador; // tipo de escalonador a ser utilizado
 };
 
 // funções auxiliares
@@ -75,7 +82,7 @@ static void so_cria_tab_proc(so_t* self) {
   self->processos.prontos = proc_list_cria();
   self->processos.atual = NULL;
   self->processos.max_pid = 0;
-  self->processos.escalonador = ESCALONADOR;
+  self->escalonador = ESCALONADOR;
 }
 
 static void so_inicializa_metricas(so_t* self) {
@@ -109,6 +116,7 @@ void so_destroi(so_t *self)
 {
   proc_list_destroi(self->processos.bloqueados);
   proc_list_destroi(self->processos.prontos);
+  so_mem_destroi(self->so_mem);
   free(self);
 }
 
@@ -194,6 +202,56 @@ static void so_trata_tic(so_t *self)
   self->processos.atual->quantum--;
 }
 
+// decide qual quadro vai ser liberado
+static int so_escolhe_quadro(so_t* self) {
+  if(self->alg_pag == ALEATORIO) {
+    return rand() % N_QUADROS;
+  }
+
+  int indice_ultimo = 0;
+  quadro_t primeiro_quadro = so_mem_quadro(self->so_mem, 0);
+  for(int c=1; c<N_QUADROS; c++) {
+    if(so_mem_quadro(self->so_mem, c).posicao < primeiro_quadro.posicao) {
+      indice_ultimo = c;
+    }
+  }
+
+  return indice_ultimo;
+}
+
+// trata uma falha de página
+static void so_trata_falpag(so_t* self)
+{
+  proc_t* proc = self->processos.atual;
+  tab_pag_t* tab_pag = proc->tab_pag;
+  int end = mmu_ultimo_endereco(contr_mmu(self->contr));
+  int pagina = end / QUADRO_TAM;
+  int quadro = so_mem_encontra_livre(self->so_mem);
+
+  if(quadro == -1) { // Nenhum quadro disponível, troca
+    t_printf("memória encheu");
+    quadro = so_escolhe_quadro(self);
+    quadro_t antigo = so_mem_quadro(self->so_mem, quadro);
+    tab_pag_muda_valida(antigo.proc->tab_pag, antigo.pagina, false);
+    for(int c=0; c<QUADRO_TAM; c++) { // copia a memória do quadro para o processo
+      int val;
+      mem_le(contr_mem(self->contr), quadro * QUADRO_TAM + c, &val);
+      mem_escreve(antigo.proc->mem, antigo.pagina * QUADRO_TAM + c, val);
+    }
+    t_printf("Escolhi o quadro %d", quadro);
+  }
+
+  for(int c=0; c<QUADRO_TAM; c++) { // copia a memória do processo para o quadro
+    int val;
+    mem_le(proc->mem, pagina * QUADRO_TAM + c, &val);
+    mem_escreve(contr_mem(self->contr), quadro * QUADRO_TAM + c, val);
+  }
+
+  tab_pag_muda_quadro(tab_pag, pagina, quadro);
+  tab_pag_muda_valida(tab_pag, pagina, true);
+  so_mem_ocupa(self->so_mem, quadro, proc, pagina);
+}
+
 // houve uma interrupção do tipo err — trate-a
 void so_int(so_t *self, err_t err)
 {
@@ -211,6 +269,11 @@ void so_int(so_t *self, err_t err)
     case ERR_TIC:
       so_trata_tic(self);
       break;
+    case ERR_FALPAG:
+      so_trata_falpag(self);
+      break;
+    case ERR_PAGINV:
+      t_printf("Página inválida: %d", mmu_ultimo_endereco(contr_mmu(self->contr)));
     default:
       t_printf("SO: interrupção não tratada [%s] feita pelo processo %d", err_nome(err), proc->id);
       so_finaliza_processo(self, proc);
@@ -278,7 +341,7 @@ static proc_t* so_escalona(so_t* self)
   }
 
   // Preempção
-  proc_t* proc = (self->processos.escalonador == ROUND_ROBIN) ?
+  proc_t* proc = (self->escalonador == ROUND_ROBIN) ?
     so_encontra_first(self) :
     so_encontra_shortest(self);
   
@@ -291,7 +354,7 @@ static proc_t* so_escalona(so_t* self)
     atual->metricas.foi_bloqueado = false;
     atual->metricas.tempo_cpu += agora - atual->metricas.hora_execucao;
 
-    if(self->processos.escalonador == SHORTEST) {
+    if(self->escalonador == SHORTEST) {
       // Calcula o tempo esperado do processo que foi colocado em preempção
       int ultimo_tempo = agora - atual->metricas.hora_execucao;
       atual->tempo_esperado = (atual->tempo_esperado + ultimo_tempo)/2;
@@ -301,50 +364,11 @@ static proc_t* so_escalona(so_t* self)
   return proc;
 }
 
-/** Cria um processo e o inicializa com o programa desejado */
-static proc_t* so_cria_processo(so_t *self, int prog)
-{
-  proc_t* proc = proc_cria(self->processos.max_pid);
-
-  if(proc == NULL || prog > sizeof(PROGRS)/4-1 || prog < 0) {
-    t_printf("Falha na criação do processo %d", proc->id);
-    panico(self);
-    return proc;
-  }
-
-  proc_list_push_front(self->processos.prontos, proc);
-  self->processos.max_pid++;
-
-  t_printf("Processo %d criado", proc->id);
-
-  int* progr = PROGRS[prog];
-  int tam_progr = PROGRS_SIZE[prog]/sizeof(progr[0]);
-
-  int quadro = so_mem_encontra_livre(self->so_mem);
-  proc->prog = prog;
-
-  t_printf("Processo %d usando quadro %d", proc->id, quadro);
-  int offset = quadro * QUADRO_TAM;
-  for (int i = 0; i < tam_progr; i++) {
-    if (mem_escreve(contr_mem(self->contr), offset + i, progr[i]) != ERR_OK) {
-      t_printf("Falha na inicialização do processo %d", proc->id);
-      panico(self);
-      return proc;
-    }
-  }
-  
-  so_mem_ocupa(self->so_mem, quadro);
-  proc->tab_pag = tab_pag_cria(1, QUADRO_TAM);
-  tab_pag_muda_quadro(proc->tab_pag, 0, quadro);
-  tab_pag_muda_valida(proc->tab_pag, 0, true);
-
-  proc->quantum = MAX_QUANTUM;
-  proc->tempo_esperado = MAX_QUANTUM;
-
+static void so_inicializa_metricas_proc(so_t* self, proc_t* proc) {
   int agora = rel_agora(self->rel);
+
   proc->metricas.hora_criacao = agora;
   proc->metricas.hora_desbloqueio_preempcao = agora;
-
   proc->metricas.tempo_total = 0;
   proc->metricas.tempo_bloqueado = 0;
   proc->metricas.tempo_cpu = 0;
@@ -353,6 +377,43 @@ static proc_t* so_cria_processo(so_t *self, int prog)
   proc->metricas.bloqueios = 0;
   proc->metricas.preempcoes = 0;
   proc->metricas.foi_bloqueado = false;
+}
+
+/** Cria um processo e o inicializa com o programa desejado */
+static proc_t* so_cria_processo(so_t *self, int prog)
+{
+  if(prog > sizeof(PROGRS)/4-1 || prog < 0) {
+    t_printf("Programa inválido");
+    return NULL;
+  }
+
+  proc_t* proc = (proc_t*) malloc(sizeof(proc_t));
+
+  int* progr = PROGRS[prog];
+  int tam_progr = PROGRS_SIZE[prog]/sizeof(progr[0]);
+
+  proc->quantum = MAX_QUANTUM;
+  proc->tempo_esperado = MAX_QUANTUM;
+  proc->cpue = cpue_cria();
+  proc->mem = mem_cria(tam_progr);
+  proc->tab_pag = tab_pag_cria(tam_progr/QUADRO_TAM + 1, QUADRO_TAM);
+  proc->id = self->processos.max_pid;
+  proc->prog = prog;
+  cpue_muda_modo(proc->cpue, usuario);
+  so_inicializa_metricas_proc(self, proc);
+
+  proc_list_push_front(self->processos.prontos, proc);
+  self->processos.max_pid++;
+
+  t_printf("Processo %d criado", proc->id);
+
+  for (int i = 0; i < tam_progr; i++) {
+    if (mem_escreve(proc->mem, i, progr[i]) != ERR_OK) {
+      t_printf("Falha na inicialização do processo %d", proc->id);
+      panico(self);
+      return proc;
+    }
+  }
 
   return proc;
 }
@@ -368,6 +429,11 @@ static void so_finaliza_processo(so_t *self, proc_t* proc)
   proc->metricas.tempo_cpu += agora - proc->metricas.hora_execucao;
 
   so_imprime_metricas_processo(self, proc);
+  for(int c=0; c<N_QUADROS; c++) {
+    if(proc == so_mem_quadro(self->so_mem, c).proc) {
+      so_mem_libera(self->so_mem, c);
+    }
+  }
 
   proc_destroi(proc);
 }
@@ -444,7 +510,7 @@ static void so_bloqueia_processo(so_t *self) {
 
   proc_list_push_front(self->processos.bloqueados, proc);
 
-  if(self->processos.escalonador == SHORTEST) {
+  if(self->escalonador == SHORTEST) {
     // Calcula o tempo esperado do processo que foi colocado em preempção
     int ultimo_tempo = agora - proc->metricas.hora_execucao;
     proc->tempo_esperado = (proc->tempo_esperado + ultimo_tempo)/2;

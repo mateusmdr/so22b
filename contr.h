@@ -7,11 +7,9 @@
 //   interrupções, com chamada ao SO para tratá-las
 // concentra os dispositivos de hardware
 
-
-#define MEM_TAM 32000        // tamanho da memória principal
-
 typedef struct contr_t contr_t;
 
+#include "so_mem.h"
 #include "mem.h"
 #include "mmu.h"
 #include "so.h"

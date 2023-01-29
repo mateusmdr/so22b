@@ -1,27 +1,6 @@
 #include <sys/queue.h>
 #include <string.h>
-#include "mem.h"
 #include "proc.h"
-#include "cpu_estado.h"
-
-proc_t* proc_cria(int id) {
-    proc_t* proc = (proc_t*) malloc(sizeof(proc_t));
-
-    if (proc == NULL) return NULL;
-
-    proc->cpue = cpue_cria();
-    proc->id = id;
-    proc->prog = -1;
-    cpue_muda_modo(proc->cpue, usuario);
-    
-
-    return proc;
-}
-
-void proc_destroi(proc_t* proc) {
-    cpue_destroi(proc->cpue);
-    free(proc);
-}
 
 proc_list_t* proc_list_cria() {
     proc_list_t* self = malloc(sizeof(proc_list_t));
@@ -53,4 +32,11 @@ void proc_list_pop(proc_list_t* self, proc_t* el) {
 
 bool proc_list_empty(proc_list_t* self) {
     return STAILQ_EMPTY(self);
+}
+
+void proc_destroi(proc_t* self) {
+    tab_pag_destroi(self->tab_pag);
+    mem_destroi(self->mem);
+    cpue_destroi(self->cpue);
+    free(self);
 }

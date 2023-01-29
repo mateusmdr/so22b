@@ -38,6 +38,7 @@ typedef struct proc_t {
     cpu_estado_t* cpue;       // Estado da CPU do processo
     int disp;                 // Número do dispositivo (caso bloqueado por e/s)
     acesso_t acesso;          // Tipo de acesso (caso bloqueado por e/s)
+    mem_t* mem;               // Memória secundária do processo
     
     /** Valores utilizados pelos escalonadores */
     int quantum;
@@ -51,12 +52,6 @@ typedef struct proc_t {
 } proc_t;
 
 typedef STAILQ_HEAD(proc_list_t, proc_t) proc_list_t;
-
-// aloca um processo
-proc_t* proc_cria(int id);
-
-// desaloca um processo
-void proc_destroi(proc_t* proc);
 
 // inicializa uma lista de processos
 proc_list_t* proc_list_cria();
@@ -75,5 +70,7 @@ void proc_list_pop(proc_list_t* self, proc_t* el);
 
 // verdadeiro se a lista está vazia
 bool proc_list_empty(proc_list_t* self);
+
+void proc_destroi(proc_t* self);
 
 #endif
