@@ -30,6 +30,7 @@ typedef struct {
     float tempo_medio_retorno;
     int bloqueios;
     int preempcoes;
+    int falhas_pagina;
 } proc_metricas_t;
 
 typedef struct proc_t {

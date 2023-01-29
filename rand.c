@@ -14,9 +14,9 @@ rand_t *rand_cria(rel_t *rel)
     rand_t* self = malloc(sizeof(rand_t));
     srand(time(NULL));
     self->min = 0;
-    self->max = 10000;
+    self->max = 1000;
     self->rel = rel;
-    self->n_inst_ultima_leitura = -10; // Inicia desbloqueado
+    self->n_inst_ultima_leitura = -30; // Inicia desbloqueado
 
     return self;
 }
@@ -47,11 +47,11 @@ err_t rand_le(void *disp, int id, int *pvalor)
     return ERR_OK;
 }
 
-// Ocupado durante 10 instrucoes
+// Ocupado durante 30 instrucoes
 bool rand_pronto(void *disp, int id, acesso_t acesso) {
     rand_t* self = (rand_t*)disp;
     int instrucoes;
     rel_le(self->rel, 0, &instrucoes);
 
-    return instrucoes - self->n_inst_ultima_leitura >= 10;
+    return instrucoes - self->n_inst_ultima_leitura >= 30;
 }

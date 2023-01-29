@@ -1,8 +1,0 @@
-Métricas do Sistema Operacional
-
-Tempo total do sistema (segundos): ........... 23,000000
-Tempo total do sistema (unidades de tempo):... 2183
-Tempo da CPU ativa (unidades de tempo): ...... 2103
-Tempo da CPU parada (unidades de tempo): ..... 80
-Número de interrupções recebidas: ............ 211
-Número de sisops recebidas: .................. 75

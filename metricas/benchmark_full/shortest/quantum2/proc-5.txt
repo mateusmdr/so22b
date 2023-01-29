@@ -1,9 +1,0 @@
-Métricas do Processo PID=5
-
-Tempo entre criação e término (unidades de tempo): ..... 16658
-Tempo total bloqueado (unidades de tempo): ............. 0
-Tempo total executando (unidades de tempo): ............ 7349
-Tempo total em espera  (unidades de tempo): ............ 9309
-Tempo médio de retorno (unidades de tempo): ............ 4,250000
-Número de bloqueios: ................................... 4
-Número de preempções: .................................. 152

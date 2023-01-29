@@ -49,6 +49,7 @@ typedef struct {
   int tempo_parado;
   int interrupcoes;
   int sisops;
+  int falhas_pagina;
 } so_metricas_t;
 
 struct so_t {
@@ -93,6 +94,7 @@ static void so_inicializa_metricas(so_t* self) {
   self->metricas.tempo_cpu = 0;
   self->metricas.tempo_parado = 0;
   self->metricas.hora_inicio_real = time(NULL);
+  self->metricas.falhas_pagina = 0;
 }
 
 so_t *so_cria(contr_t *contr)
@@ -229,7 +231,6 @@ static void so_trata_falpag(so_t* self)
   int quadro = so_mem_encontra_livre(self->so_mem);
 
   if(quadro == -1) { // Nenhum quadro disponível, troca
-    t_printf("memória encheu");
     quadro = so_escolhe_quadro(self);
     quadro_t antigo = so_mem_quadro(self->so_mem, quadro);
     tab_pag_muda_valida(antigo.proc->tab_pag, antigo.pagina, false);
@@ -238,7 +239,6 @@ static void so_trata_falpag(so_t* self)
       mem_le(contr_mem(self->contr), quadro * QUADRO_TAM + c, &val);
       mem_escreve(antigo.proc->mem, antigo.pagina * QUADRO_TAM + c, val);
     }
-    t_printf("Escolhi o quadro %d", quadro);
   }
 
   for(int c=0; c<QUADRO_TAM; c++) { // copia a memória do processo para o quadro
@@ -250,6 +250,9 @@ static void so_trata_falpag(so_t* self)
   tab_pag_muda_quadro(tab_pag, pagina, quadro);
   tab_pag_muda_valida(tab_pag, pagina, true);
   so_mem_ocupa(self->so_mem, quadro, proc, pagina);
+
+  proc->metricas.falhas_pagina++;
+  self->metricas.falhas_pagina++;
 }
 
 // houve uma interrupção do tipo err — trate-a
@@ -377,6 +380,7 @@ static void so_inicializa_metricas_proc(so_t* self, proc_t* proc) {
   proc->metricas.bloqueios = 0;
   proc->metricas.preempcoes = 0;
   proc->metricas.foi_bloqueado = false;
+  proc->metricas.falhas_pagina = 0;
 }
 
 /** Cria um processo e o inicializa com o programa desejado */
@@ -569,6 +573,7 @@ static void so_imprime_metricas_processo(so_t* self, proc_t* proc) {
   fprintf(file, "Tempo médio de retorno (unidades de tempo): ............ %f\n", metricas.tempo_medio_retorno);
   fprintf(file, "Número de bloqueios: ................................... %d\n", metricas.bloqueios);
   fprintf(file, "Número de preempções: .................................. %d\n", metricas.preempcoes);
+  fprintf(file, "Número de falhas de página: ............................ %d\n", metricas.falhas_pagina);
 
   fclose(file);
 }
@@ -585,6 +590,7 @@ static void so_imprime_metricas(so_t* self) {
   fprintf(file, "Tempo da CPU parada (unidades de tempo): ..... %d\n", metricas.tempo_parado);
   fprintf(file, "Número de interrupções recebidas: ............ %d\n", metricas.interrupcoes);
   fprintf(file, "Número de sisops recebidas: .................. %d\n", metricas.sisops);
+  fprintf(file, "Número de falhas de página: .................. %d\n", metricas.falhas_pagina);
 
   fclose(file);
 }
