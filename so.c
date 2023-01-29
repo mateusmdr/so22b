@@ -11,7 +11,7 @@
 
 #define PROGRAMA_INICIAL 0
 #define ESCALONADOR ROUND_ROBIN
-#define MAX_QUANTUM 16
+#define MAX_QUANTUM 2
 #define ALG_PAG FIFO
 
 typedef enum {

@@ -12,9 +12,9 @@ typedef struct {
   int posicao;                    // Qual a posição do quadro em relação aos outros (usado no FIFO)
 } quadro_t;
 
-#define MEM_TAM 16000 // tamanho da memória principal
-#define N_QUADROS 10
-#define QUADRO_TAM (MEM_TAM/N_QUADROS)
+#define MEM_TAM 300 // tamanho da memória principal
+#define QUADRO_TAM 50
+#define N_QUADROS (MEM_TAM/QUADRO_TAM)
 
 typedef struct so_mem so_mem_t;
 
